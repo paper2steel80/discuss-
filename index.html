@@ -689,7 +689,7 @@ function handleRosterFile(e){
 function viewProfEdit(){
   const s = PROF.editingSession;
   const subjects = [...new Set(PROF.index.map(x=>x.subject).filter(Boolean))];
-  const currentCount = s.groupIds.length || 4;
+  const currentCount = (s.groupIds||[]).length || 4;
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-dash">← Dashboard</button></p>
   <h1 class="page-title">Edit session</h1>
@@ -733,7 +733,7 @@ async function deleteIndividualData(roomCode){
 function bindProfEdit(){
   const s = PROF.editingSession;
   document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
-  builder = { groupCount:s.groupIds.length, roster:null };
+  builder = { groupCount:(s.groupIds||[]).length, roster:null };
   const uploadWrap = document.getElementById('pc-roster-upload');
   function refreshEditor(){
     const mode = currentMode();
@@ -756,7 +756,7 @@ function bindProfEdit(){
     const groupCount = Math.max(2, Math.min(30, +document.getElementById('pc-group-count').value || 4));
     if(!question){ errEl.textContent = 'Please enter a discussion question.'; return; }
 
-    const structuralChange = (mode !== s.groupMode) || (mode!=='individual' && groupCount !== s.groupIds.length) || ((mode==='preset'||mode==='random') && builder.roster && builder.roster.length);
+    const structuralChange = (mode !== s.groupMode) || (mode!=='individual' && groupCount !== (s.groupIds||[]).length) || ((mode==='preset'||mode==='random') && builder.roster && builder.roster.length);
     if(structuralChange){
       if((mode==='preset' || mode==='random') && (!builder.roster || !builder.roster.length)){
         errEl.textContent = 'Please upload a roster file — changing group setup needs a file.';
@@ -770,9 +770,9 @@ function bindProfEdit(){
     startBtn.disabled = true; startBtn.textContent = 'Saving…';
     errEl.textContent = '';
 
-    let groupIds = s.groupIds;
+    let groupIds = s.groupIds || [];
     if(structuralChange){
-      for(const gid of s.groupIds){
+      for(const gid of (s.groupIds||[])){
         const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
         for(const k of likeKeys) await sDel(k);
         await sDel(`disc-group:${s.roomCode}:${gid}`);
@@ -860,13 +860,13 @@ async function loadProfProgress(attempt=1){
   }
 
   const groups = [];
-  for(const gid of s.groupIds){
+  for(const gid of (s.groupIds||[])){
     const g = await sGet(`disc-group:${s.roomCode}:${gid}`);
     if(!g) continue;
     const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
     groups.push({...g, likeCount: likeKeys.length});
   }
-  if(!groups.length && s.groupIds.length && attempt<6){
+  if(!groups.length && (s.groupIds||[]).length && attempt<6){
     if(attempt>=2) el.innerHTML = '<div class="empty">Still loading — this can take a few seconds right after creating a session…</div>';
     await sleep(1000 * attempt);
     return loadProfProgress(attempt+1);
@@ -878,7 +878,7 @@ async function loadProfProgress(attempt=1){
         <span class="gname">${esc(g.name)}</span>
         ${g.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
       </div>
-      <div class="members">${g.members.length? g.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') : 'No members yet'}</div>
+      <div class="members">${(g.members||[]).length? (g.members||[]).map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') : 'No members yet'}</div>
       <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
       ${g.attachment ? `<div class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a></div>` : ''}
       <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${g.likeCount} likes</span></div>
@@ -922,12 +922,12 @@ function studentIdView(){
   </div>`;
 }
 function studentPickGroupView(){
-  const groupList = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(Boolean);
+  const groupList = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(Boolean);
   return `
   <p class="page-eyebrow">${esc(STU.session.question)}</p>
   <h1 class="page-title">Choose your group</h1>
   <div class="card">
-    ${groupList.map(g=>`<div class="group-choice" data-gid="${g.id}">${esc(g.name)} <span style="color:var(--charcoal-soft);font-size:14px;">(${g.members.length} members)</span></div>`).join('')}
+    ${groupList.map(g=>`<div class="group-choice" data-gid="${g.id}">${esc(g.name)} <span style="color:var(--charcoal-soft);font-size:14px;">(${(g.members||[]).length} members)</span></div>`).join('')}
   </div>
   <div class="error-text">${esc(STU.error)}</div>`;
 }
@@ -953,7 +953,7 @@ function studentTeamConfirmView(){
   <p class="page-eyebrow">${esc(STU.session.question)}</p>
   <h1 class="page-title">Join ${esc(g.name)}</h1>
   <div class="card">
-    <p style="font-size:15.5px;color:var(--charcoal-soft);margin:0 0 14px;">Current members: ${g.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') || 'none yet'}</p>
+    <p style="font-size:15.5px;color:var(--charcoal-soft);margin:0 0 14px;">Current members: ${(g.members||[]).map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') || 'none yet'}</p>
     <div class="field"><label>Your student ID</label><input type="text" id="st-team-myid" placeholder="20231234"></div>
     <div class="field"><label>Your name</label><input type="text" id="st-team-myname" placeholder="Jane Kim"></div>
     <button class="brass" id="st-team-confirm">Join this group</button>
@@ -962,7 +962,7 @@ function studentTeamConfirmView(){
 }
 function studentMainView(){
   const my = STU.groups[STU.myGroupId];
-  const others = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  const others = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
   const canSwitch = STU.session.groupMode === 'self';
   if(STU.opinionEditMode===undefined) STU.opinionEditMode = !my.opinion;
   return `
@@ -974,7 +974,7 @@ function studentMainView(){
       <span class="gname">My group · ${esc(my.name)}</span>
       ${canSwitch ? '<button class="secondary small" id="st-switch">Change group</button>' : ''}
     </div>
-    <div class="members">${my.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ')}</div>
+    <div class="members">${(my.members||[]).map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ')}</div>
 
     ${STU.opinionEditMode ? `
     <div class="field"><label>Our group's response</label><textarea id="st-opinion" placeholder="Write your group's discussion summary here">${esc(my.opinion||'')}</textarea></div>
@@ -1103,7 +1103,7 @@ function bindStudent(){
       await loadGroupsForSession();
       // Preset and Random modes both pre-assign the whole roster to groups when the
       // session is created, so joining is just finding which group already has this ID.
-      const found = Object.values(STU.groups).find(g=>g.members.some(m=>m.sid===sid));
+      const found = Object.values(STU.groups).find(g=>(g.members||[]).some(m=>m.sid===sid));
       if(!found){ STU.error='Your student ID was not found on the roster. Please check with your instructor.'; render(); return; }
       await enterGroup(found.id);
     });
@@ -1174,7 +1174,7 @@ function bindStudent(){
         const gid = el.dataset.gid;
         const g = STU.groups[gid];
         STU.pendingGroupId = gid; STU.error='';
-        STU.step = (g && g.members.length>0) ? 'teamconfirm' : 'teaminput';
+        STU.step = (g && (g.members||[]).length>0) ? 'teamconfirm' : 'teaminput';
         render();
       });
     });
@@ -1209,6 +1209,7 @@ function bindStudent(){
       if(!myid || !myname){ STU.error='Please enter your student ID and name.'; render(); return; }
       const gid = STU.pendingGroupId;
       let g = await sGet(`disc-group:${STU.code}:${gid}`);
+      g.members = g.members || [];
       if(!g.members.some(m=>m.sid===myid)) g.members.push({sid:myid, name:myname});
       await sSet(`disc-group:${STU.code}:${gid}`, g);
       STU.groups[gid] = g;
@@ -1228,7 +1229,7 @@ function bindStudent(){
   const switchBtn = document.getElementById('st-switch');
   if(switchBtn) switchBtn.addEventListener('click', async ()=>{
     let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
-    g.members = g.members.filter(m=>m.sid!==STU.sid);
+    g.members = (g.members||[]).filter(m=>m.sid!==STU.sid);
     await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
     STU.groups[STU.myGroupId] = g;
     STU.myGroupId = null;
@@ -1304,7 +1305,7 @@ async function refreshOthers(){
   await refreshStudentGroups();
   const el = document.getElementById('st-others');
   if(!el) return;
-  const others = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  const others = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
   el.innerHTML = others.length? others.map(g=>otherGroupCard(g)).join('') : '<div class="empty">No other groups yet.</div>';
   bindOthersLikeButtons(el);
 }
@@ -1362,7 +1363,7 @@ async function enterIndividual(){
 
 async function loadGroupsForSession(){
   const groups = {};
-  for(const gid of STU.session.groupIds){ const g = await sGet(`disc-group:${STU.code}:${gid}`); if(g) groups[gid]=g; }
+  for(const gid of (STU.session.groupIds||[])){ const g = await sGet(`disc-group:${STU.code}:${gid}`); if(g) groups[gid]=g; }
   STU.groups = groups;
 }
 async function enterGroup(gid){
@@ -1376,14 +1377,14 @@ async function persistStudentState(){
   await sSet(STU_KEY, { code:STU.code, sid:STU.sid, name:STU.name, myGroupId:STU.myGroupId }, false);
 }
 async function loadLikes(){
-  for(const gid of STU.session.groupIds){
+  for(const gid of (STU.session.groupIds||[])){
     const v = await sGet(`disc-like:${STU.code}:${gid}:${STU.sid}`);
     STU.likes[gid] = !!v;
   }
 }
 async function refreshStudentGroups(){
   const groups = {};
-  for(const gid of STU.session.groupIds){
+  for(const gid of (STU.session.groupIds||[])){
     const g = await sGet(`disc-group:${STU.code}:${gid}`);
     if(!g) continue;
     const likeKeys = await sList(`disc-like:${STU.code}:${gid}:`);
