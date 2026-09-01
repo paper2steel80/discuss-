@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Discussion Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#EAF6F1; --paper:#FFFFFF; --mint:#4FA98C; --mint-deep:#2F7D63; --mint-pale:#DCF2E9;
+    --ink:#1F3A34; --charcoal:#233129; --charcoal-soft:#5b6f66; --line:#CFEAE0; --brick:#B14B4B;
+    --serif:'Newsreader',Georgia,serif; --sans:'Inter',-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--bg);color:var(--charcoal);-webkit-font-smoothing:antialiased;}
+  #main{max-width:780px;margin:0 auto;padding:40px 24px 80px;}
+  .page-eyebrow{font-family:var(--serif);font-style:italic;color:var(--charcoal-soft);font-size:17px;margin:0 0 4px;}
+  h1.page-title{font-family:var(--serif);font-weight:600;font-size:34px;margin:0 0 8px;color:var(--ink);line-height:1.3;}
+  .page-desc{font-size:16.5px;color:var(--charcoal-soft);line-height:1.6;margin:0 0 26px;max-width:62ch;}
+  .card{background:var(--paper);border:1px solid var(--line);padding:22px 24px;margin-bottom:18px;}
+  .card h3{font-family:var(--serif);font-size:20.5px;margin:0 0 12px;color:var(--ink);font-weight:600;}
+  .hairline{border:none;border-top:1px solid var(--line);margin:20px 0;}
+  button{font-family:var(--sans);cursor:pointer;border:1px solid var(--mint-deep);background:var(--mint-deep);color:#fff;padding:9px 18px;font-size:15.5px;font-weight:600;}
+  button:hover{background:var(--ink);border-color:var(--ink);}
+  button.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  button.secondary:hover{border-color:var(--mint-deep);background:var(--mint-pale);}
+  button.brass{background:var(--mint);border-color:var(--mint);}
+  button.brass:hover{background:var(--mint-deep);}
+  button.danger{background:transparent;color:var(--brick);border:1px solid var(--brick);}
+  button.danger:hover{background:rgba(177,75,75,.08);}
+  button.small{padding:5px 10px;font-size:13.5px;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  input[type=text],input[type=number],textarea,select{font-family:var(--sans);font-size:16px;padding:9px 11px;border:1px solid var(--line);background:#F7FCFA;color:var(--charcoal);width:100%;}
+  textarea{resize:vertical;min-height:70px;}
+  label{display:block;font-size:14px;font-weight:600;color:var(--charcoal-soft);margin:0 0 5px;}
+  .field{margin-bottom:14px;}
+  .row{display:flex;gap:10px;}
+  .row>*{flex:1;}
+  .radio-group{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+  .radio-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:12px 14px;cursor:pointer;}
+  .radio-opt.active{border-color:var(--mint);background:var(--mint-pale);}
+  .radio-opt input{margin-top:3px;}
+  .radio-opt .rt{font-weight:600;font-size:16px;}
+  .radio-opt .rd{font-size:14px;color:var(--charcoal-soft);margin-top:2px;}
+  .roomcode{font-family:var(--serif);font-size:49.5px;font-weight:600;color:var(--mint-deep);letter-spacing:.06em;text-align:center;}
+  .tag{display:inline-block;font-size:13px;padding:3px 9px;background:var(--mint-pale);border:1px solid var(--line);color:var(--charcoal-soft);margin-right:6px;}
+  .empty{color:var(--charcoal-soft);font-size:16px;padding:16px 0;text-align:center;font-style:italic;}
+  .group-card{border:1px solid var(--line);background:#fff;padding:16px 18px;margin-bottom:12px;}
+  .group-card.mine{border-color:var(--mint);background:var(--mint-pale);}
+  .group-card .gname{font-family:var(--serif);font-size:20.5px;color:var(--ink);font-weight:600;}
+  .group-card .members{font-size:13.5px;color:var(--charcoal-soft);margin:2px 0 10px;}
+  .group-card .opinion{font-size:16px;line-height:1.6;white-space:pre-wrap;margin-bottom:10px;}
+  .meta-row{display:flex;justify-content:space-between;align-items:center;}
+  .like-btn{border:1px solid var(--line);background:#fff;color:var(--charcoal);padding:6px 14px;font-size:14.5px;}
+  .like-btn.liked{border-color:var(--mint-deep);background:var(--mint-pale);color:var(--mint-deep);}
+  .present-badge{background:var(--mint-deep);color:#fff;font-size:13px;padding:3px 9px;}
+  .present-check{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;margin-top:10px;}
+  .present-toggle{background:#fff;color:var(--charcoal);border:1.5px solid var(--line);padding:9px 16px;font-size:16px;margin-top:10px;}
+  .present-toggle.active{background:var(--mint-deep);border-color:var(--mint-deep);color:#fff;}
+  .attach-link{display:inline-flex;align-items:center;gap:6px;font-size:14.5px;color:var(--mint-deep);text-decoration:none;border:1px solid var(--line);padding:6px 12px;background:#F7FCFA;}
+  .attach-link:hover{border-color:var(--mint-deep);}
+  .attach-row{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;}
+  .join-hero{text-align:center;padding:20px 0 10px;}
+  .roomcode-input{font-family:var(--serif);font-size:34px;text-align:center;letter-spacing:.15em;padding:12px;}
+  .notice{border-left:3px solid var(--mint);background:var(--mint-pale);padding:12px 16px;font-size:14.5px;color:var(--charcoal-soft);margin-bottom:22px;}
+  .error-text{color:var(--brick);font-size:14.5px;margin-top:8px;}
+  .save-status{font-size:14px;color:var(--mint-deep);font-weight:600;margin-left:10px;}
+  .group-choice{display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:8px;background:#fff;border:1.5px solid var(--line);color:var(--charcoal);font-size:17px;font-weight:500;}
+  .group-choice:hover{border-color:var(--mint);}
+  .role-choice{display:block;width:100%;text-align:center;padding:20px;margin-bottom:12px;background:#fff;border:1.5px solid var(--line);font-family:var(--serif);font-size:22.5px;color:var(--ink);}
+  .role-choice:hover{border-color:var(--mint);}
+  .file-drop{border:1.5px dashed var(--line);padding:18px;text-align:center;font-size:15.5px;color:var(--charcoal-soft);background:var(--mint-pale);}
+  .link-btn{background:none;border:none;color:var(--mint-deep);font-weight:600;padding:0;text-decoration:underline;}
+  .link-btn:hover{background:none;color:var(--ink);}
+  .course-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .course-tile{border:1px solid var(--line);background:#fff;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:4px;}
+  .course-tile:hover{border-color:var(--mint);background:var(--mint-pale);}
+  .course-tile .cname{font-family:var(--serif);font-size:17px;color:var(--ink);font-weight:600;line-height:1.25;}
+  .course-tile .ccount{font-size:13px;color:var(--charcoal-soft);}
+  .chevron{font-size:14.5px;color:var(--charcoal-soft);transition:transform .15s;}
+  .week-block{margin-top:12px;}
+  .week-label{font-size:13.5px;font-weight:700;color:var(--mint-deep);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+  .sess-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);}
+  .sess-row:last-child{border-bottom:none;}
+  .sess-q{font-size:15.5px;color:var(--charcoal);}
+  .sess-code{font-size:13px;color:var(--charcoal-soft);}
+</style>
+</head>
+<body>
+<div id="main"></div>
+<script>
+/* ---------- Firebase setup ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDyVoo-nIK0d8U0iEBpQ2fVT6o-mR4Al10",
+  authDomain: "class-5e531.firebaseapp.com",
+  databaseURL: "https://class-5e531-default-rtdb.firebaseio.com",
+  projectId: "class-5e531",
+  storageBucket: "class-5e531.firebasestorage.app",
+  messagingSenderId: "251178040005",
+  appId: "1:251178040005:web:c8d0d9f6ab1a9632798eac"
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb = firebase.database();
+// Resolves once anonymous sign-in completes; every storage call waits on this,
+// so the app "just works" without the student/instructor ever seeing a login screen.
+const authReady = new Promise((resolve)=>{
+  fbAuth.onAuthStateChanged(user=>{ if(user) resolve(user.uid); });
+  fbAuth.signInAnonymously().catch(err=>console.error('Anonymous sign-in failed', err));
+});
+
+/* ---------- storage helpers (Firebase-backed, same call signatures as before) ---------- */
+function keyToPath(key, shared, uid){
+  const cleanKey = String(key).split(':').join('/');
+  return shared ? `shared/${cleanKey}` : `users/${uid}/${cleanKey}`;
+}
+async function sGet(key, shared=true){
+  try{
+    const uid = await authReady;
+    const snap = await fbDb.ref(keyToPath(key, shared, uid)).once('value');
+    const v = snap.val();
+    return (v===null || v===undefined) ? null : v;
+  }catch(e){ console.error('sGet error', key, e); return null; }
+}
+async function sSet(key, val, shared=true){
+  try{
+    const uid = await authReady;
+    await fbDb.ref(keyToPath(key, shared, uid)).set(val);
+    return true;
+  }catch(e){ console.error('sSet error', key, e); return false; }
+}
+async function sDel(key, shared=true){
+  try{
+    const uid = await authReady;
+    await fbDb.ref(keyToPath(key, shared, uid)).remove();
+    return true;
+  }catch(e){ console.error('sDel error', key, e); return false; }
+}
+async function sList(prefix, shared=true){
+  try{
+    const uid = await authReady;
+    const trimmed = prefix.endsWith(':') ? prefix.slice(0, -1) : prefix;
+    const snap = await fbDb.ref(keyToPath(trimmed, shared, uid)).once('value');
+    const val = snap.val();
+    if(!val || typeof val !== 'object') return [];
+    return Object.keys(val).map(childKey => prefix + childKey);
+  }catch(e){ console.error('sList error', prefix, e); return []; }
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function shuffleArray(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+function roomCode(){ return String(Math.floor(1000+Math.random()*9000)); }
+function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+/* ---------- app state ---------- */
+let ROLE = null;
+let PROF_VIEW = 'dashboard';
+let PROF = { index:[], activeSession:null };
+let STU = { step:'code', code:null, sid:null, name:null, session:null, groups:{}, myGroupId:null, likes:{}, pollHandle:null, error:'' };
+let builder = { groupCount:4, roster:null };
+let dashOpen = new Set();
+let dashOpenWeeks = new Set();
+
+const STU_KEY = 'student-current';
+const PROF_PASSCODE = '5305';
+let profAuthenticated = false;
+let profAuthError = '';
+
+function render(){
+  const main = document.getElementById('main');
+  if(ROLE==='profauth'){ main.innerHTML = viewProfAuth(); bindProfAuth(); return; }
+  if(!ROLE){ main.innerHTML = viewRoleSelect(); bindRoleSelect(); return; }
+  if(ROLE==='prof'){
+    let inner;
+    if(PROF_VIEW==='dashboard'){ inner = viewDashboard(); }
+    else if(PROF_VIEW==='course'){ inner = viewProfCourse(); }
+    else if(PROF_VIEW==='create'){ inner = viewProfCreate(); }
+    else if(PROF_VIEW==='edit'){ inner = viewProfEdit(); }
+    else { inner = viewProfProgress(); }
+    main.innerHTML = '<p style="margin-bottom:14px;"><button class="link-btn" id="role-switch">← Switch role (Instructor / Student)</button></p>' + inner;
+    if(PROF_VIEW==='dashboard'){ bindDashboard(); }
+    else if(PROF_VIEW==='course'){ bindProfCourse(); }
+    else if(PROF_VIEW==='create'){ bindProfCreate(); }
+    else if(PROF_VIEW==='edit'){ bindProfEdit(); }
+    else { bindProfProgress(); }
+    document.getElementById('role-switch').addEventListener('click', ()=>{
+      profAuthenticated = false; ROLE = null; render();
+    });
+  } else {
+    main.innerHTML = '<p style="margin-bottom:14px;"><button class="link-btn" id="role-switch">← Switch role (Instructor / Student)</button></p>' + viewStudent();
+    bindStudent();
+    const switchEl = document.getElementById('role-switch');
+    if(switchEl) switchEl.addEventListener('click', async ()=>{
+      clearInterval(STU.pollHandle);
+      await sDel(STU_KEY, false);
+      profAuthenticated = false;
+      ROLE = null;
+      STU = { step:'code', code:null, sid:null, name:null, session:null, groups:{}, myGroupId:null, likes:{}, pollHandle:null, error:'' };
+      render();
+    });
+  }
+}
+
+/* ================= ROLE SELECT ================= */
+function viewRoleSelect(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Group Discussion Board</p>
+    <h1 class="page-title">Join with a room code</h1>
+  </div>
+  <div style="max-width:360px;margin:0 auto;">
+    <div class="role-choice" id="role-student">Student — join with a room code</div>
+  </div>
+  <p style="text-align:center;margin-top:24px;"><button class="link-btn" id="role-prof">Instructor sign-in</button></p>`;
+}
+function bindRoleSelect(){
+  document.getElementById('role-student').addEventListener('click', ()=>{ ROLE='student'; render(); });
+  document.getElementById('role-prof').addEventListener('click', ()=>{
+    if(profAuthenticated){ enterProfMode(); return; }
+    ROLE='profauth'; profAuthError=''; render();
+  });
+}
+function viewProfAuth(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Instructor sign-in</p>
+    <h1 class="page-title">Enter the instructor passcode</h1>
+  </div>
+  <div style="max-width:280px;margin:0 auto;">
+    <input type="text" id="prof-passcode" class="roomcode-input" placeholder="••••" maxlength="12">
+    <div style="height:12px;"></div>
+    <button class="brass" style="width:100%;" id="prof-passcode-go">Enter</button>
+    <div class="error-text">${esc(profAuthError)}</div>
+    <p style="text-align:center;margin-top:20px;"><button class="link-btn" id="prof-passcode-back">← Back</button></p>
+  </div>`;
+}
+function bindProfAuth(){
+  document.getElementById('prof-passcode-back').addEventListener('click', ()=>{ ROLE=null; render(); });
+  const goBtn = document.getElementById('prof-passcode-go');
+  const input = document.getElementById('prof-passcode');
+  const submit = ()=>{
+    if(input.value === PROF_PASSCODE){ profAuthenticated = true; enterProfMode(); }
+    else { profAuthError = 'Incorrect passcode.'; render(); }
+  };
+  goBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submit(); });
+}
+async function enterProfMode(){
+  ROLE='prof';
+  PROF.index = await sGet('session-index', false) || [];
+  PROF_VIEW='dashboard';
+  render();
+}
+
+/* ================= PROFESSOR: DASHBOARD (course grid) ================= */
+function groupIndexByCourse(){
+  const byCourse = {};
+  PROF.index.forEach(s=>{
+    const c = s.subject || 'Untitled course';
+    if(!byCourse[c]) byCourse[c] = {};
+    const w = s.week || 1;
+    if(!byCourse[c][w]) byCourse[c][w] = [];
+    byCourse[c][w].push(s);
+  });
+  return byCourse;
+}
+function viewDashboard(){
+  const byCourse = groupIndexByCourse();
+  const courseNames = Object.keys(byCourse).sort();
+  return `
+  <p class="page-eyebrow">Instructor dashboard</p>
+  <h1 class="page-title">Your discussion sessions</h1>
+  <p class="page-desc">Grouped by course. Tap a course to see its weeks and sessions.</p>
+  <div class="card">
+    <label>Open a classroom</label>
+    <div class="row" style="max-width:340px;">
+      <input type="text" id="dash-open-course" list="dash-course-list" placeholder="e.g. Business English 101">
+      <datalist id="dash-course-list">${courseNames.map(c=>`<option value="${escAttr(c)}">`).join('')}</datalist>
+      <button class="brass" id="dash-open-course-btn" style="flex:0 0 auto;">Open</button>
+    </div>
+    <p style="font-size:13.5px;color:var(--charcoal-soft);margin:8px 0 0;">Type an existing course name to open it, or a new one to start it. You'll add sessions from inside that classroom.</p>
+  </div>
+  <hr class="hairline">
+  <div id="dash-list" class="course-grid">
+    ${courseNames.length ? courseNames.map(c=>courseTile(c, byCourse[c])).join('') : '<div class="empty">No classrooms yet. Open one above.</div>'}
+  </div>
+  <hr class="hairline">
+  <div class="card">
+    <h3>Backups</h3>
+    <p style="font-size:14.5px;color:var(--charcoal-soft);margin:0 0 14px;">Good practice: keep local copies as an extra safety net.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="secondary" id="dash-export-data">Export all data (Excel)</button>
+      <button class="secondary" id="dash-export-code">Download this app (.html)</button>
+    </div>
+    <div id="dash-export-status" style="font-size:14px;color:var(--mint-deep);margin-top:10px;"></div>
+  </div>
+  `;
+}
+function courseTile(course, weeks){
+  const total = Object.values(weeks).reduce((a,arr)=>a+arr.length,0);
+  return `
+  <div class="course-tile" data-course="${escAttr(course)}">
+    <span class="cname">${esc(course)}</span>
+    <span class="ccount">${total} session${total!==1?'s':''}</span>
+  </div>`;
+}
+function bindDashboard(){
+  document.getElementById('dash-export-data').addEventListener('click', exportAllData);
+  document.getElementById('dash-export-code').addEventListener('click', downloadAppSource);
+  document.querySelectorAll('[data-course]').forEach(el=>el.addEventListener('click', ()=>{
+    PROF.viewingCourse = el.dataset.course;
+    dashOpenWeeks = new Set();
+    PROF_VIEW='course'; render();
+  }));
+  document.getElementById('dash-open-course-btn').addEventListener('click', ()=>{
+    const name = document.getElementById('dash-open-course').value.trim();
+    if(!name) return;
+    PROF.viewingCourse = name;
+    dashOpenWeeks = new Set();
+    PROF_VIEW='course'; render();
+  });
+}
+
+/* ================= PROFESSOR: COURSE DETAIL ================= */
+function viewProfCourse(){
+  const course = PROF.viewingCourse;
+  const byCourse = groupIndexByCourse();
+  const weeks = byCourse[course] || {};
+  const weekNums = Object.keys(weeks).map(Number).sort((a,b)=>a-b);
+  const maxWeek = weekNums.length ? Math.max(...weekNums) : 0;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="course-back">← Dashboard</button></p>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+    <h1 class="page-title">${esc(course)}</h1>
+    <div style="display:flex;gap:8px;">
+      <button class="secondary small" id="course-rename">Rename class</button>
+      <button class="danger small" id="course-delete">Delete class</button>
+    </div>
+  </div>
+  <button class="brass" id="course-new" data-nextweek="${maxWeek+1}">+ New session in ${esc(course)}</button>
+  <div class="card" style="margin-top:18px;">
+    ${weekNums.length ? weekNums.map(w=>{
+      const wkKey = course+'|'+w;
+      const wkOpen = dashOpenWeeks.has(wkKey);
+      return `
+      <div class="week-block">
+        <div class="week-label" data-week-toggle="${escAttr(wkKey)}" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+          <span>Week ${w} · ${weeks[w].length} session${weeks[w].length!==1?'s':''}</span>
+          <span class="chevron">${wkOpen?'▾':'▸'}</span>
+        </div>
+        ${wkOpen ? weeks[w].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(s=>`
+          <div class="sess-row">
+            <div><div class="sess-q">${esc(s.question)}</div><div class="sess-code">Room ${s.code}</div></div>
+            <div style="display:flex;gap:6px;">
+              <button class="secondary small" data-open="${s.code}">Open</button>
+              <button class="secondary small" data-edit="${s.code}">Edit</button>
+              <button class="danger small" data-del="${s.code}">Delete</button>
+            </div>
+          </div>`).join('') : ''}
+      </div>`;
+    }).join('') : '<div class="empty">No sessions in this course yet.</div>'}
+  </div>
+  `;
+}
+function bindProfCourse(){
+  document.getElementById('course-back').addEventListener('click', ()=>{ PROF_VIEW='dashboard'; render(); });
+  document.getElementById('course-new').addEventListener('click', (ev)=>{
+    PROF.prefill = { subject: PROF.viewingCourse, week: +ev.currentTarget.dataset.nextweek };
+    PROF_VIEW='create'; render();
+  });
+  document.getElementById('course-rename').addEventListener('click', async ()=>{
+    const oldName = PROF.viewingCourse;
+    const newName = prompt('Rename this class to:', oldName);
+    if(!newName || !newName.trim() || newName.trim()===oldName) return;
+    const trimmed = newName.trim();
+    const affected = PROF.index.filter(x=>(x.subject||'Untitled course')===oldName);
+    for(const idx of affected){
+      const session = await sGet(`disc-session:${idx.code}`);
+      if(session){ session.subject = trimmed; await sSet(`disc-session:${idx.code}`, session); }
+      idx.subject = trimmed;
+    }
+    await sSet('session-index', PROF.index, false);
+    PROF.viewingCourse = trimmed;
+    render();
+  });
+  document.getElementById('course-delete').addEventListener('click', async ()=>{
+    const course = PROF.viewingCourse;
+    const affected = PROF.index.filter(x=>(x.subject||'Untitled course')===course);
+    if(!confirm(`Delete "${course}" and all ${affected.length} session(s) in it? This permanently deletes every group, response, and like in this class. This cannot be undone.`)) return;
+    for(const idx of affected){
+      const session = await sGet(`disc-session:${idx.code}`);
+      if(session){
+        for(const gid of (session.groupIds || [])){
+          const likeKeys = await sList(`disc-like:${idx.code}:${gid}:`);
+          for(const k of likeKeys) await sDel(k);
+          await sDel(`disc-group:${idx.code}:${gid}`);
+        }
+        if(session.groupMode === 'individual'){ await deleteIndividualData(idx.code); }
+        await sDel(`disc-session:${idx.code}`);
+      }
+    }
+    PROF.index = PROF.index.filter(x=>(x.subject||'Untitled course')!==course);
+    await sSet('session-index', PROF.index, false);
+    PROF_VIEW='dashboard'; render();
+  });
+  document.querySelectorAll('[data-week-toggle]').forEach(el=>el.addEventListener('click', ()=>{
+    const key = el.dataset.weekToggle;
+    if(dashOpenWeeks.has(key)) dashOpenWeeks.delete(key); else dashOpenWeeks.add(key);
+    render();
+  }));
+  document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.dataset.open;
+    const session = await sGet(`disc-session:${code}`);
+    if(!session){ alert('This session could not be found. It may have been removed.'); return; }
+    PROF.activeSession = session; PROF_VIEW='progress'; render();
+  }));
+  document.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.dataset.edit;
+    const session = await sGet(`disc-session:${code}`);
+    if(!session){ alert('This session could not be found. It may have been removed.'); return; }
+    PROF.editingSession = session; PROF_VIEW='edit'; render();
+  }));
+  document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.dataset.del;
+    if(!confirm('Delete this session and all its responses? This cannot be undone.')) return;
+    const session = await sGet(`disc-session:${code}`);
+    if(session){
+      for(const gid of (session.groupIds || [])){
+        const likeKeys = await sList(`disc-like:${code}:${gid}:`);
+        for(const k of likeKeys) await sDel(k);
+        await sDel(`disc-group:${code}:${gid}`);
+      }
+      if(session.groupMode === 'individual'){ await deleteIndividualData(code); }
+      await sDel(`disc-session:${code}`);
+    }
+    PROF.index = PROF.index.filter(s=>s.code!==code);
+    await sSet('session-index', PROF.index, false);
+    render();
+  }));
+}
+
+/* ================= BACKUPS ================= */
+async function exportAllData(){
+  const statusEl = document.getElementById('dash-export-status');
+  statusEl.textContent = 'Gathering all session data…';
+  const byCourseSessions = {};
+  const byCourseGroups = {};
+  let totalSessions = 0, totalGroups = 0;
+  try{
+    for(const idx of PROF.index){
+      const session = await sGet(`disc-session:${idx.code}`);
+      if(!session){ continue; }
+      const course = session.subject || 'Untitled course';
+      if(!byCourseSessions[course]) byCourseSessions[course] = [];
+      if(!byCourseGroups[course]) byCourseGroups[course] = [];
+      byCourseSessions[course].push({
+        Week: session.week, Question: session.question,
+        'Room code': session.roomCode, 'Group mode': session.groupMode,
+        'Created at': new Date(session.createdAt || 0).toLocaleString()
+      });
+      totalSessions++;
+      if(session.groupMode === 'individual'){
+        const keys = await sList(`disc-indiv:${session.roomCode}:`);
+        for(const k of keys){
+          const r = await sGet(k);
+          if(!r) continue;
+          const likeKeys = await sList(`disc-indiv-like:${session.roomCode}:${r.sid}:`);
+          byCourseGroups[course].push({
+            Week: session.week, Question: session.question, 'Room code': session.roomCode,
+            Group: '(individual)', Members: `${r.sid} ${r.name}`,
+            Response: r.opinion || '', 'Wants to present': r.presentWish ? 'Yes' : 'No', Likes: likeKeys.length
+          });
+          totalGroups++;
+        }
+        continue;
+      }
+      for(const gid of (session.groupIds || [])){
+        const g = await sGet(`disc-group:${session.roomCode}:${gid}`);
+        if(!g) continue;
+        const likeKeys = await sList(`disc-like:${session.roomCode}:${gid}:`);
+        const members = g.members || [];
+        byCourseGroups[course].push({
+          Week: session.week, Question: session.question, 'Room code': session.roomCode,
+          Group: g.name, Members: members.map(m=>`${m.sid} ${m.name}`).join('; '),
+          Response: g.opinion || '', 'Wants to present': g.presentWish ? 'Yes' : 'No', Likes: likeKeys.length
+        });
+        totalGroups++;
+      }
+    }
+  }catch(err){
+    console.error('Export: data gathering failed', err);
+    statusEl.textContent = "Couldn't read some session data. Please try again.";
+    return;
+  }
+  const courses = Object.keys(byCourseSessions);
+  if(!courses.length){ statusEl.textContent = 'No data to export yet.'; return; }
+  try{
+    const wb = XLSX.utils.book_new();
+    const usedNames = new Set();
+    function safeSheetName(base){
+      let name = base.replace(/[\\/?*\[\]:]/g, ' ').trim().slice(0, 28) || 'Course';
+      let final = name; let n = 2;
+      while(usedNames.has(final)){ final = name.slice(0, 25) + ' ' + n; n++; }
+      usedNames.add(final);
+      return final;
+    }
+    courses.forEach(course=>{
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byCourseSessions[course]), safeSheetName(course + ' Sessions'));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byCourseGroups[course]), safeSheetName(course + ' Groups'));
+    });
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([wbout], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `discussion-board-export-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    statusEl.textContent = `Exported ${totalSessions} session(s) across ${courses.length} course(s), ${totalGroups} group record(s).`;
+  }catch(err){
+    console.error('Export: file build failed', err);
+    statusEl.textContent = "Couldn't build the export file. Please try again.";
+  }
+}
+function downloadAppSource(){
+  try{
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'group-discussion-board-app.html';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    const statusEl = document.getElementById('dash-export-status');
+    if(statusEl) statusEl.textContent = 'App code downloaded. This file can be reopened anytime to see exactly how it works.';
+  }catch(err){
+    console.error(err);
+    alert("Couldn't download the app file. Please try again.");
+  }
+}
+
+/* ================= PROFESSOR: CREATE ================= */
+function viewProfCreate(){
+  const subjects = [...new Set(PROF.index.map(s=>s.subject).filter(Boolean))];
+  const prefill = PROF.prefill || {};
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-dash">← Dashboard</button></p>
+  <h1 class="page-title">New discussion session</h1>
+  <p class="page-desc">Post a discussion question and choose how groups are formed.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Course</label><input type="text" id="pc-subject" list="pc-subject-list" placeholder="e.g. Business English 101" value="${escAttr(prefill.subject||'')}"><datalist id="pc-subject-list">${subjects.map(s=>`<option value="${escAttr(s)}">`).join('')}</datalist></div>
+      <div class="field" style="max-width:120px;"><label>Week</label><input type="number" id="pc-week" value="${prefill.week||1}" min="1"></div>
+    </div>
+    <div class="field"><label>Discussion question</label><textarea id="pc-question" placeholder="e.g. What should we consider first when entering this market?"></textarea></div>
+  </div>
+
+  <div class="card">
+    <h3>How are groups formed?</h3>
+    <div class="radio-group" id="pc-mode-group">
+      <label class="radio-opt" data-mode="preset"><input type="radio" name="pc-mode" value="preset" checked><div><div class="rt">Preset roster</div><div class="rd">Upload a class roster (Excel). Students are matched automatically by student ID.</div></div></label>
+      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self"><div><div class="rt">Self-select</div><div class="rd">Set the number of groups. Students pick which group to join, and can switch later.</div></div></label>
+      <label class="radio-opt" data-mode="random"><input type="radio" name="pc-mode" value="random"><div><div class="rt">Random assignment</div><div class="rd">Upload a class roster (Excel). We'll shuffle everyone and split them evenly into groups.</div></div></label>
+      <label class="radio-opt" data-mode="individual"><input type="radio" name="pc-mode" value="individual"><div><div class="rt">Individual (no groups)</div><div class="rd">No groups — each student posts their own response under their own name.</div></div></label>
+    </div>
+    <hr class="hairline">
+    <div class="field" id="pc-group-count-field" style="max-width:160px;"><label>Number of groups</label><input type="number" id="pc-group-count" value="4" min="2" max="30"></div>
+    <div id="pc-roster-upload"></div>
+  </div>
+
+  <button class="brass" id="pc-start">Start session</button>
+  <div id="pc-error" class="error-text"></div>
+  `;
+}
+function rosterUploadHTML(){
+  return `
+  <div class="field">
+    <label>Class roster (Excel .xlsx/.xls/.csv — column A: student ID, column B: name, row 1 = header)</label>
+    <div class="file-drop">
+      <input type="file" id="pc-roster-file" accept=".xlsx,.xls,.csv">
+      <div id="pc-roster-status" style="margin-top:8px;">No file uploaded yet.</div>
+    </div>
+  </div>`;
+}
+function currentMode(){
+  const r = document.querySelector('input[name="pc-mode"]:checked');
+  return r ? r.value : 'preset';
+}
+function bindProfCreate(){
+  document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
+  builder = { groupCount:4, roster:null };
+  const uploadWrap = document.getElementById('pc-roster-upload');
+  function refreshEditor(){
+    const mode = currentMode();
+    document.querySelectorAll('.radio-opt').forEach(el=>el.classList.toggle('active', el.dataset.mode===mode));
+    uploadWrap.innerHTML = (mode==='preset' || mode==='random') ? rosterUploadHTML() : '';
+    if(mode==='preset' || mode==='random'){
+      document.getElementById('pc-roster-file').addEventListener('change', handleRosterFile);
+    }
+    document.getElementById('pc-group-count-field').style.display = (mode==='individual') ? 'none' : '';
+  }
+  document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
+  refreshEditor();
+
+  document.getElementById('pc-start').addEventListener('click', async ()=>{
+    const errEl = document.getElementById('pc-error');
+    const subject = document.getElementById('pc-subject').value.trim() || 'Untitled course';
+    const week = Math.max(1, +document.getElementById('pc-week').value || 1);
+    const question = document.getElementById('pc-question').value.trim();
+    const mode = currentMode();
+    const groupCount = Math.max(2, Math.min(30, +document.getElementById('pc-group-count').value || 4));
+    if(!question){ errEl.textContent = 'Please enter a discussion question.'; return; }
+    if((mode==='preset' || mode==='random') && (!builder.roster || !builder.roster.length)){ errEl.textContent = 'Please upload a roster file.'; return; }
+
+    const groupsToCreate = [];
+    if(mode !== 'individual'){
+      for(let i=1;i<=groupCount;i++) groupsToCreate.push({name:`Group ${i}`, members:[]});
+      if(mode==='preset'){
+        builder.roster.forEach((stu, i)=>{ groupsToCreate[i % groupCount].members.push(stu); });
+      } else if(mode==='random'){
+        shuffleArray([...builder.roster]).forEach((stu, i)=>{ groupsToCreate[i % groupCount].members.push(stu); });
+      }
+    }
+
+    const startBtn = document.getElementById('pc-start');
+    startBtn.disabled = true; startBtn.textContent = 'Creating session…';
+    errEl.textContent = '';
+
+    const code = roomCode();
+    const groupIds = [];
+    for(const g of groupsToCreate){
+      const gid = uid();
+      groupIds.push(gid);
+      await sSet(`disc-group:${code}:${gid}`, {id:gid, name:g.name, members:g.members, opinion:'', presentWish:false});
+    }
+    const session = { roomCode:code, subject, week, question, groupMode:mode, groupIds, createdAt: Date.now() };
+    await sSet(`disc-session:${code}`, session);
+
+    PROF.index.push({code, subject, week, question, createdAt: session.createdAt});
+    await sSet('session-index', PROF.index, false);
+
+    PROF.activeSession = session; PROF_VIEW='progress'; render();
+  });
+}
+function handleRosterFile(e){
+  const file = e.target.files[0];
+  const statusEl = document.getElementById('pc-roster-status');
+  const startBtn = document.getElementById('pc-start');
+  if(!file) return;
+  statusEl.textContent = 'Reading file...';
+  builder.roster = null;
+  if(startBtn) startBtn.disabled = true; // block Start until parsing finishes
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+      const roster = rows.slice(1)
+        .filter(r=>r && r[0]!==undefined && r[0]!==null && String(r[0]).trim()!=='')
+        .map(r=>({ sid:String(r[0]).trim(), name: r[1]!==undefined ? String(r[1]).trim() : '(no name)' }));
+      if(!roster.length){ statusEl.textContent = 'No student rows found. Check the file format.'; builder.roster=null; }
+      else { builder.roster = roster; statusEl.textContent = `Loaded ${roster.length} students.`; }
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = "Couldn't read this file. Please upload a valid Excel or CSV file.";
+      builder.roster = null;
+    }
+    if(startBtn) startBtn.disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ================= PROFESSOR: EDIT ================= */
+function viewProfEdit(){
+  const s = PROF.editingSession;
+  const subjects = [...new Set(PROF.index.map(x=>x.subject).filter(Boolean))];
+  const currentCount = s.groupIds.length || 4;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-dash">← Dashboard</button></p>
+  <h1 class="page-title">Edit session</h1>
+  <p class="page-desc">Room code <strong>${s.roomCode}</strong> stays the same. Changing course, week, or the question is always safe. Changing how groups are formed, the number of groups, or uploading a new roster will reset that room's groups, responses, and likes.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Course</label><input type="text" id="pc-subject" list="pc-subject-list" value="${escAttr(s.subject)}"><datalist id="pc-subject-list">${subjects.map(x=>`<option value="${escAttr(x)}">`).join('')}</datalist></div>
+      <div class="field" style="max-width:120px;"><label>Week</label><input type="number" id="pc-week" value="${s.week}" min="1"></div>
+    </div>
+    <div class="field"><label>Discussion question</label><textarea id="pc-question">${esc(s.question)}</textarea></div>
+  </div>
+
+  <div class="card">
+    <h3>How are groups formed?</h3>
+    <div class="radio-group" id="pc-mode-group">
+      <label class="radio-opt" data-mode="preset"><input type="radio" name="pc-mode" value="preset" ${s.groupMode==='preset'?'checked':''}><div><div class="rt">Preset roster</div><div class="rd">Upload a class roster (Excel). Students are matched automatically by student ID.</div></div></label>
+      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self" ${s.groupMode==='self'?'checked':''}><div><div class="rt">Self-select</div><div class="rd">Set the number of groups. Students pick which group to join, and can switch later.</div></div></label>
+      <label class="radio-opt" data-mode="random"><input type="radio" name="pc-mode" value="random" ${s.groupMode==='random'?'checked':''}><div><div class="rt">Random assignment</div><div class="rd">Upload a class roster (Excel). We'll shuffle everyone and split them evenly into groups.</div></div></label>
+      <label class="radio-opt" data-mode="individual"><input type="radio" name="pc-mode" value="individual" ${s.groupMode==='individual'?'checked':''}><div><div class="rt">Individual (no groups)</div><div class="rd">No groups — each student posts their own response under their own name.</div></div></label>
+    </div>
+    <hr class="hairline">
+    <div class="field" id="pc-group-count-field" style="max-width:160px;"><label>Number of groups</label><input type="number" id="pc-group-count" value="${currentCount}" min="2" max="30"></div>
+    <div id="pc-roster-upload"></div>
+    <p style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">Leave the group mode, group count, and roster untouched to keep this room's existing groups exactly as they are.</p>
+  </div>
+
+  <button class="brass" id="pc-start">Save changes</button>
+  <div id="pc-error" class="error-text"></div>
+  `;
+}
+async function deleteIndividualData(roomCode){
+  const keys = await sList(`disc-indiv:${roomCode}:`);
+  for(const k of keys){
+    const sid = k.split(':').pop();
+    const likeKeys = await sList(`disc-indiv-like:${roomCode}:${sid}:`);
+    for(const lk of likeKeys) await sDel(lk);
+    await sDel(k);
+  }
+}
+function bindProfEdit(){
+  const s = PROF.editingSession;
+  document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
+  builder = { groupCount:s.groupIds.length, roster:null };
+  const uploadWrap = document.getElementById('pc-roster-upload');
+  function refreshEditor(){
+    const mode = currentMode();
+    document.querySelectorAll('.radio-opt').forEach(el=>el.classList.toggle('active', el.dataset.mode===mode));
+    uploadWrap.innerHTML = (mode==='preset' || mode==='random') ? rosterUploadHTML() : '';
+    if(mode==='preset' || mode==='random'){
+      document.getElementById('pc-roster-file').addEventListener('change', handleRosterFile);
+    }
+    document.getElementById('pc-group-count-field').style.display = (mode==='individual') ? 'none' : '';
+  }
+  document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
+  refreshEditor();
+
+  document.getElementById('pc-start').addEventListener('click', async ()=>{
+    const errEl = document.getElementById('pc-error');
+    const subject = document.getElementById('pc-subject').value.trim() || 'Untitled course';
+    const week = Math.max(1, +document.getElementById('pc-week').value || 1);
+    const question = document.getElementById('pc-question').value.trim();
+    const mode = currentMode();
+    const groupCount = Math.max(2, Math.min(30, +document.getElementById('pc-group-count').value || 4));
+    if(!question){ errEl.textContent = 'Please enter a discussion question.'; return; }
+
+    const structuralChange = (mode !== s.groupMode) || (mode!=='individual' && groupCount !== s.groupIds.length) || ((mode==='preset'||mode==='random') && builder.roster && builder.roster.length);
+    if(structuralChange){
+      if((mode==='preset' || mode==='random') && (!builder.roster || !builder.roster.length)){
+        errEl.textContent = 'Please upload a roster file — changing group setup needs a file.';
+        return;
+      }
+      const ok = confirm("This will reset this room's groups/responses: existing members, responses, likes, and \"hand raised\" status will be permanently deleted. Continue?");
+      if(!ok) return;
+    }
+
+    const startBtn = document.getElementById('pc-start');
+    startBtn.disabled = true; startBtn.textContent = 'Saving…';
+    errEl.textContent = '';
+
+    let groupIds = s.groupIds;
+    if(structuralChange){
+      for(const gid of s.groupIds){
+        const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
+        for(const k of likeKeys) await sDel(k);
+        await sDel(`disc-group:${s.roomCode}:${gid}`);
+      }
+      if(s.groupMode === 'individual'){ await deleteIndividualData(s.roomCode); }
+      groupIds = [];
+      if(mode !== 'individual'){
+        const groupsToCreate = [];
+        for(let i=1;i<=groupCount;i++) groupsToCreate.push({name:`Group ${i}`, members:[]});
+        if(mode==='preset'){
+          builder.roster.forEach((stu, i)=>{ groupsToCreate[i % groupCount].members.push(stu); });
+        } else if(mode==='random'){
+          shuffleArray([...builder.roster]).forEach((stu, i)=>{ groupsToCreate[i % groupCount].members.push(stu); });
+        }
+        for(const g of groupsToCreate){
+          const gid = uid();
+          groupIds.push(gid);
+          await sSet(`disc-group:${s.roomCode}:${gid}`, {id:gid, name:g.name, members:g.members, opinion:'', presentWish:false});
+        }
+      }
+    }
+
+    const updatedSession = { ...s, subject, week, question, groupMode:mode, groupIds };
+    await sSet(`disc-session:${s.roomCode}`, updatedSession);
+
+    const idxEntry = PROF.index.find(x=>x.code===s.roomCode);
+    if(idxEntry){ idxEntry.subject = subject; idxEntry.week = week; idxEntry.question = question; }
+    await sSet('session-index', PROF.index, false);
+
+    PROF.editingSession = null; PROF_VIEW='course'; render();
+  });
+}
+
+/* ================= PROFESSOR: PROGRESS ================= */
+function viewProfProgress(){
+  const s = PROF.activeSession;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-dash2">← Dashboard</button></p>
+  <div><span class="tag">${esc(s.subject)}</span><span class="tag">Week ${s.week}</span></div>
+  <h1 class="page-title" style="margin-top:8px;">${esc(s.question)}</h1>
+  <div class="card" style="text-align:center;">
+    <div class="tag">Room code</div>
+    <div class="roomcode">${s.roomCode}</div>
+    <p style="color:var(--charcoal-soft);font-size:14.5px;">Students enter this code on the <strong>Student</strong> screen.</p>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:18px;">
+    <button class="secondary" id="pp-refresh">Refresh</button>
+  </div>
+  <div id="pp-groups"><div class="empty">Click refresh to load group activity.</div></div>
+  `;
+}
+function bindProfProgress(){
+  document.getElementById('back-dash2').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
+  document.getElementById('pp-refresh').addEventListener('click', loadProfProgress);
+  loadProfProgress();
+}
+async function loadProfProgress(attempt=1){
+  const s = PROF.activeSession;
+  const el = document.getElementById('pp-groups');
+  if(!el) return;
+  if(attempt===1) el.innerHTML = '<div class="empty">Loading…</div>';
+
+  if(s.groupMode === 'individual'){
+    const keys = await sList(`disc-indiv:${s.roomCode}:`);
+    const entries = [];
+    for(const k of keys){
+      const r = await sGet(k);
+      if(!r) continue;
+      const likeKeys = await sList(`disc-indiv-like:${s.roomCode}:${r.sid}:`);
+      entries.push({...r, likeCount: likeKeys.length});
+    }
+    if(!entries.length){ el.innerHTML = '<div class="empty">No responses yet. Share the room code with students.</div>'; return; }
+    entries.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    el.innerHTML = entries.map(r=>`
+      <div class="group-card">
+        <div class="meta-row">
+          <span class="gname">${esc(r.name)} <span style="font-size:13.5px;color:var(--charcoal-soft);font-family:var(--sans);">· ${esc(r.sid)}</span></span>
+          ${r.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+        </div>
+        <div class="opinion">${r.opinion ? esc(r.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+        ${r.attachment ? `<div class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a></div>` : ''}
+        <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${r.likeCount} likes</span></div>
+      </div>`).join('');
+    return;
+  }
+
+  const groups = [];
+  for(const gid of s.groupIds){
+    const g = await sGet(`disc-group:${s.roomCode}:${gid}`);
+    if(!g) continue;
+    const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
+    groups.push({...g, likeCount: likeKeys.length});
+  }
+  if(!groups.length && s.groupIds.length && attempt<6){
+    if(attempt>=2) el.innerHTML = '<div class="empty">Still loading — this can take a few seconds right after creating a session…</div>';
+    await sleep(1000 * attempt);
+    return loadProfProgress(attempt+1);
+  }
+  if(!groups.length){ el.innerHTML = '<div class="empty">Still no group data. Please click Refresh below — this can happen right after uploading a large roster.</div>'; return; }
+  el.innerHTML = groups.map(g=>`
+    <div class="group-card">
+      <div class="meta-row">
+        <span class="gname">${esc(g.name)}</span>
+        ${g.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+      </div>
+      <div class="members">${g.members.length? g.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') : 'No members yet'}</div>
+      <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+      ${g.attachment ? `<div class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a></div>` : ''}
+      <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${g.likeCount} likes</span></div>
+    </div>`).join('');
+}
+
+/* ================= STUDENT ================= */
+function viewStudent(){
+  if(STU.step==='code') return studentCodeView();
+  if(STU.step==='id') return studentIdView();
+  if(STU.step==='pickgroup') return studentPickGroupView();
+  if(STU.step==='teaminput') return studentTeamInputView();
+  if(STU.step==='teamconfirm') return studentTeamConfirmView();
+  if(STU.step==='individualMain') return studentIndividualMainView();
+  return studentMainView();
+}
+function studentCodeView(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Student</p>
+    <h1 class="page-title">Enter the room code</h1>
+  </div>
+  <div style="max-width:280px;margin:0 auto;">
+    <input type="text" id="st-code" class="roomcode-input" maxlength="4" placeholder="0000">
+    <div style="height:12px;"></div>
+    <button class="brass" style="width:100%;" id="st-code-next">Next</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function studentIdView(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">${esc(STU.session.question)}</p>
+    <h1 class="page-title">Enter your student ID and name</h1>
+  </div>
+  <div style="max-width:320px;margin:0 auto;">
+    <div class="field"><label>Student ID</label><input type="text" id="st-sid" placeholder="20231234"></div>
+    <div class="field"><label>Name</label><input type="text" id="st-name" placeholder="Jane Kim"></div>
+    <button class="brass" style="width:100%;" id="st-id-next">Join</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function studentPickGroupView(){
+  const groupList = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(Boolean);
+  return `
+  <p class="page-eyebrow">${esc(STU.session.question)}</p>
+  <h1 class="page-title">Choose your group</h1>
+  <div class="card">
+    ${groupList.map(g=>`<div class="group-choice" data-gid="${g.id}">${esc(g.name)} <span style="color:var(--charcoal-soft);font-size:14px;">(${g.members.length} members)</span></div>`).join('')}
+  </div>
+  <div class="error-text">${esc(STU.error)}</div>`;
+}
+function studentTeamInputView(){
+  const g = STU.groups[STU.pendingGroupId];
+  return `
+  <p class="page-eyebrow">${esc(STU.session.question)}</p>
+  <h1 class="page-title">Set up ${esc(g.name)}</h1>
+  <p class="page-desc">Nobody's added to this group yet. Enter everyone in your group at once — you only need to do this one time for the whole team.</p>
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Your student ID</label><input type="text" id="st-team-myid" placeholder="20231234"></div>
+      <div class="field"><label>Your name</label><input type="text" id="st-team-myname" placeholder="Jane Kim"></div>
+    </div>
+    <div class="field"><label>All members of ${esc(g.name)} — one per line: ID Name</label><textarea id="st-team-roster" placeholder="20231234 Jane Kim&#10;20235678 Alex Park&#10;20239012 Sam Lee" style="min-height:110px;"></textarea></div>
+    <button class="brass" id="st-team-save">Save team &amp; continue</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function studentTeamConfirmView(){
+  const g = STU.groups[STU.pendingGroupId];
+  return `
+  <p class="page-eyebrow">${esc(STU.session.question)}</p>
+  <h1 class="page-title">Join ${esc(g.name)}</h1>
+  <div class="card">
+    <p style="font-size:15.5px;color:var(--charcoal-soft);margin:0 0 14px;">Current members: ${g.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') || 'none yet'}</p>
+    <div class="field"><label>Your student ID</label><input type="text" id="st-team-myid" placeholder="20231234"></div>
+    <div class="field"><label>Your name</label><input type="text" id="st-team-myname" placeholder="Jane Kim"></div>
+    <button class="brass" id="st-team-confirm">Join this group</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function studentMainView(){
+  const my = STU.groups[STU.myGroupId];
+  const others = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  const canSwitch = STU.session.groupMode === 'self';
+  if(STU.opinionEditMode===undefined) STU.opinionEditMode = !my.opinion;
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
+  <h1 class="page-title">${esc(STU.session.question)}</h1>
+
+  <div class="card group-card mine">
+    <div class="meta-row">
+      <span class="gname">My group · ${esc(my.name)}</span>
+      ${canSwitch ? '<button class="secondary small" id="st-switch">Change group</button>' : ''}
+    </div>
+    <div class="members">${my.members.map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ')}</div>
+
+    ${STU.opinionEditMode ? `
+    <div class="field"><label>Our group's response</label><textarea id="st-opinion" placeholder="Write your group's discussion summary here">${esc(my.opinion||'')}</textarea></div>
+    <button class="brass small" id="st-save-opinion">Save response</button>
+    ` : `
+    <label>Our group's response</label>
+    <div class="opinion">${my.opinion ? esc(my.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+    ${my.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+    <div style="margin-top:10px;"><button class="secondary small" id="st-edit-opinion">Edit response</button></div>
+    `}
+
+    <button class="present-toggle ${my.presentWish?'active':''}" id="st-present-btn">✋ ${my.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
+
+    <div class="field" style="margin-top:16px;">
+      <label>Response too long to type? Attach a file instead (max 2MB)</label>
+      <input type="file" id="st-attach-file">
+      <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
+        ${my.attachment ? `<span class="attach-row"><a class="attach-link" href="${my.attachment.dataUrl}" download="${escAttr(my.attachment.name)}">📎 ${esc(my.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>` : 'No file attached.'}
+      </div>
+    </div>
+  </div>
+
+  <hr class="hairline">
+  <h3 style="font-family:var(--serif);color:var(--ink);font-size:20.5px;">Other groups' responses</h3>
+  <div id="st-others">
+    ${others.length? others.map(g=>otherGroupCard(g)).join('') : '<div class="empty">No other groups yet.</div>'}
+  </div>
+  <button class="secondary" id="st-refresh">Refresh</button>
+  `;
+}
+function otherGroupCard(g){
+  const liked = !!STU.likes[g.id];
+  return `<div class="group-card" data-gid="${g.id}">
+    <div class="meta-row">
+      <span class="gname">${esc(g.name)}</span>
+      ${g.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+    </div>
+    <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+    ${g.attachment ? `<div class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a></div>` : ''}
+    <div class="meta-row">
+      <button class="like-btn ${liked?'liked':''}" data-like="${g.id}">${liked?'♥ Liked':'♡ Like'} (${g.likeCount||0})</button>
+    </div>
+  </div>`;
+}
+
+function studentIndividualMainView(){
+  const me = STU.individual || {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachment:null};
+  if(STU.opinionEditMode===undefined) STU.opinionEditMode = !me.opinion;
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
+  <h1 class="page-title">${esc(STU.session.question)}</h1>
+
+  <div class="card group-card mine">
+    <div class="meta-row"><span class="gname">My response</span></div>
+
+    ${STU.opinionEditMode ? `
+    <div class="field"><label>Your response</label><textarea id="st-opinion" placeholder="Write your response here">${esc(me.opinion||'')}</textarea></div>
+    <button class="brass small" id="st-save-opinion">Save response</button>
+    ` : `
+    <label>Your response</label>
+    <div class="opinion">${me.opinion ? esc(me.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+    ${me.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+    <div style="margin-top:10px;"><button class="secondary small" id="st-edit-opinion">Edit response</button></div>
+    `}
+
+    <button class="present-toggle ${me.presentWish?'active':''}" id="st-present-btn">✋ ${me.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
+
+    <div class="field" style="margin-top:16px;">
+      <label>Response too long to type? Attach a file instead (max 2MB)</label>
+      <input type="file" id="st-attach-file">
+      <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
+        ${me.attachment ? `<span class="attach-row"><a class="attach-link" href="${me.attachment.dataUrl}" download="${escAttr(me.attachment.name)}">📎 ${esc(me.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>` : 'No file attached.'}
+      </div>
+    </div>
+  </div>
+
+  <hr class="hairline">
+  <h3 style="font-family:var(--serif);color:var(--ink);font-size:20.5px;">Other students' responses</h3>
+  <div id="st-others">
+    ${STU.indivOthers && STU.indivOthers.length ? STU.indivOthers.map(r=>otherIndividualCard(r)).join('') : '<div class="empty">No other responses yet.</div>'}
+  </div>
+  <button class="secondary" id="st-refresh">Refresh</button>
+  `;
+}
+function otherIndividualCard(r){
+  const liked = !!STU.likes[r.sid];
+  return `<div class="group-card" data-sid="${escAttr(r.sid)}">
+    <div class="meta-row">
+      <span class="gname">${esc(r.name)}</span>
+      ${r.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
+    </div>
+    <div class="opinion">${r.opinion ? esc(r.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
+    ${r.attachment ? `<div class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a></div>` : ''}
+    <div class="meta-row">
+      <button class="like-btn ${liked?'liked':''}" data-like-sid="${escAttr(r.sid)}">${liked?'♥ Liked':'♡ Like'} (${r.likeCount||0})</button>
+    </div>
+  </div>`;
+}
+
+function bindStudent(){
+  if(STU.step==='code'){
+    document.getElementById('st-code-next').addEventListener('click', async ()=>{
+      const code = document.getElementById('st-code').value.trim();
+      const session = await sGet(`disc-session:${code}`);
+      if(!session){ STU.error='No session found for that code.'; render(); return; }
+      STU.code = code; STU.session = session; STU.error='';
+      if(session.groupMode === 'self'){
+        await loadGroupsForSession();
+        STU.step='pickgroup'; render();
+      } else {
+        STU.step='id'; render();
+      }
+    });
+    return;
+  }
+  if(STU.step==='id'){
+    document.getElementById('st-id-next').addEventListener('click', async ()=>{
+      const sid = document.getElementById('st-sid').value.trim();
+      const name = document.getElementById('st-name').value.trim();
+      if(!sid || !name){ STU.error='Please enter both your student ID and name.'; render(); return; }
+      STU.sid = sid; STU.name = name; STU.error='';
+      if(STU.session.groupMode === 'individual'){
+        await enterIndividual();
+        return;
+      }
+      await loadGroupsForSession();
+      // Preset and Random modes both pre-assign the whole roster to groups when the
+      // session is created, so joining is just finding which group already has this ID.
+      const found = Object.values(STU.groups).find(g=>g.members.some(m=>m.sid===sid));
+      if(!found){ STU.error='Your student ID was not found on the roster. Please check with your instructor.'; render(); return; }
+      await enterGroup(found.id);
+    });
+    return;
+  }
+  if(STU.step==='individualMain'){
+    document.getElementById('st-exit').addEventListener('click', async ()=>{
+      clearInterval(STU.pollHandle);
+      await sDel(STU_KEY, false);
+      ROLE = null;
+      STU = { step:'code', code:null, sid:null, name:null, session:null, groups:{}, myGroupId:null, likes:{}, pollHandle:null, error:'' };
+      render();
+    });
+    const saveBtn = document.getElementById('st-save-opinion');
+    if(saveBtn) saveBtn.addEventListener('click', async ()=>{
+      let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+      r.opinion = document.getElementById('st-opinion').value;
+      await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+      STU.individual = r;
+      STU.opinionEditMode = false;
+      render();
+    });
+    const editBtn = document.getElementById('st-edit-opinion');
+    if(editBtn) editBtn.addEventListener('click', ()=>{ STU.opinionEditMode = true; render(); });
+    document.getElementById('st-present-btn').addEventListener('click', async (e)=>{
+      let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+      r.presentWish = !r.presentWish;
+      await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+      STU.individual = r;
+      const btn = e.currentTarget;
+      btn.classList.toggle('active', r.presentWish);
+      btn.textContent = r.presentWish ? "✋ Hand raised — we'd like to present" : '✋ Raise hand to present';
+    });
+    const attachInput = document.getElementById('st-attach-file');
+    if(attachInput) attachInput.addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      const statusEl = document.getElementById('st-attach-status');
+      if(!file) return;
+      if(file.size > 2*1024*1024){ statusEl.innerHTML = 'That file is over 2MB — please choose a smaller file.'; return; }
+      statusEl.textContent = 'Uploading…';
+      const reader = new FileReader();
+      reader.onload = async (ev)=>{
+        let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+        r.attachment = { name:file.name, type:file.type, dataUrl: ev.target.result };
+        await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+        STU.individual = r;
+        statusEl.innerHTML = `<span class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>`;
+        document.getElementById('st-attach-remove').addEventListener('click', removeIndivAttachment);
+      };
+      reader.readAsDataURL(file);
+    });
+    const removeBtn = document.getElementById('st-attach-remove');
+    if(removeBtn) removeBtn.addEventListener('click', removeIndivAttachment);
+    async function removeIndivAttachment(){
+      let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+      r.attachment = null;
+      await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+      STU.individual = r;
+      document.getElementById('st-attach-status').textContent = 'No file attached.';
+    }
+    bindIndivLikeButtons(document.getElementById('st-others'));
+    document.getElementById('st-refresh').addEventListener('click', refreshIndividualOthers);
+    return;
+  }
+  if(STU.step==='pickgroup'){
+    document.querySelectorAll('[data-gid]').forEach(el=>{
+      el.addEventListener('click', async ()=>{
+        const gid = el.dataset.gid;
+        const g = STU.groups[gid];
+        STU.pendingGroupId = gid; STU.error='';
+        STU.step = (g && g.members.length>0) ? 'teamconfirm' : 'teaminput';
+        render();
+      });
+    });
+    return;
+  }
+  if(STU.step==='teaminput'){
+    document.getElementById('st-team-save').addEventListener('click', async ()=>{
+      const myid = document.getElementById('st-team-myid').value.trim();
+      const myname = document.getElementById('st-team-myname').value.trim();
+      const rosterText = document.getElementById('st-team-roster').value;
+      if(!myid || !myname){ STU.error='Please enter your own student ID and name.'; render(); return; }
+      const members = rosterText.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+        const parts = l.split(/\s+/);
+        return { sid: parts[0], name: parts.slice(1).join(' ') || '(no name)' };
+      });
+      if(!members.some(m=>m.sid===myid)) members.push({sid:myid, name:myname});
+      if(!members.length){ STU.error='Please list at least one group member.'; render(); return; }
+      const gid = STU.pendingGroupId;
+      let g = await sGet(`disc-group:${STU.code}:${gid}`);
+      g.members = members;
+      await sSet(`disc-group:${STU.code}:${gid}`, g);
+      STU.groups[gid] = g;
+      STU.sid = myid; STU.name = myname; STU.error='';
+      await enterGroup(gid);
+    });
+    return;
+  }
+  if(STU.step==='teamconfirm'){
+    document.getElementById('st-team-confirm').addEventListener('click', async ()=>{
+      const myid = document.getElementById('st-team-myid').value.trim();
+      const myname = document.getElementById('st-team-myname').value.trim();
+      if(!myid || !myname){ STU.error='Please enter your student ID and name.'; render(); return; }
+      const gid = STU.pendingGroupId;
+      let g = await sGet(`disc-group:${STU.code}:${gid}`);
+      if(!g.members.some(m=>m.sid===myid)) g.members.push({sid:myid, name:myname});
+      await sSet(`disc-group:${STU.code}:${gid}`, g);
+      STU.groups[gid] = g;
+      STU.sid = myid; STU.name = myname; STU.error='';
+      await enterGroup(gid);
+    });
+    return;
+  }
+  // main view
+  document.getElementById('st-exit').addEventListener('click', async ()=>{
+    clearInterval(STU.pollHandle);
+    await sDel(STU_KEY, false);
+    ROLE = null;
+    STU = { step:'code', code:null, sid:null, name:null, session:null, groups:{}, myGroupId:null, likes:{}, pollHandle:null, error:'' };
+    render();
+  });
+  const switchBtn = document.getElementById('st-switch');
+  if(switchBtn) switchBtn.addEventListener('click', async ()=>{
+    let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+    g.members = g.members.filter(m=>m.sid!==STU.sid);
+    await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+    STU.groups[STU.myGroupId] = g;
+    STU.myGroupId = null;
+    await persistStudentState();
+    STU.step='pickgroup'; render();
+  });
+  const saveBtn = document.getElementById('st-save-opinion');
+  if(saveBtn) saveBtn.addEventListener('click', async ()=>{
+    let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+    g.opinion = document.getElementById('st-opinion').value;
+    await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+    STU.groups[STU.myGroupId] = g;
+    STU.opinionEditMode = false;
+    render();
+  });
+  const editBtn = document.getElementById('st-edit-opinion');
+  if(editBtn) editBtn.addEventListener('click', ()=>{ STU.opinionEditMode = true; render(); });
+  document.getElementById('st-present-btn').addEventListener('click', async (e)=>{
+    let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+    g.presentWish = !g.presentWish;
+    await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+    STU.groups[STU.myGroupId] = g;
+    const btn = e.currentTarget;
+    btn.classList.toggle('active', g.presentWish);
+    btn.textContent = g.presentWish ? "✋ Hand raised — we'd like to present" : '✋ Raise hand to present';
+  });
+  const attachInput = document.getElementById('st-attach-file');
+  if(attachInput) attachInput.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    const statusEl = document.getElementById('st-attach-status');
+    if(!file) return;
+    if(file.size > 2*1024*1024){ statusEl.innerHTML = 'That file is over 2MB — please choose a smaller file.'; return; }
+    statusEl.textContent = 'Uploading…';
+    const reader = new FileReader();
+    reader.onload = async (ev)=>{
+      let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+      g.attachment = { name:file.name, type:file.type, dataUrl: ev.target.result };
+      await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+      STU.groups[STU.myGroupId] = g;
+      statusEl.innerHTML = `<span class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>`;
+      document.getElementById('st-attach-remove').addEventListener('click', removeAttachment);
+    };
+    reader.readAsDataURL(file);
+  });
+  const removeBtn = document.getElementById('st-attach-remove');
+  if(removeBtn) removeBtn.addEventListener('click', removeAttachment);
+  async function removeAttachment(){
+    let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+    g.attachment = null;
+    await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+    STU.groups[STU.myGroupId] = g;
+    document.getElementById('st-attach-status').textContent = 'No file attached.';
+  }
+  bindOthersLikeButtons(document.getElementById('st-others'));
+  document.getElementById('st-refresh').addEventListener('click', refreshOthers);
+}
+function bindOthersLikeButtons(container){
+  if(!container) return;
+  container.querySelectorAll('[data-like]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const gid = btn.dataset.like;
+      const key = `disc-like:${STU.code}:${gid}:${STU.sid}`;
+      if(STU.likes[gid]){ await sDel(key); STU.likes[gid]=false; }
+      else { await sSet(key, true); STU.likes[gid]=true; }
+      await refreshOthers();
+    });
+  });
+}
+// Updates only the "other groups" panel, so a student's in-progress typing in their own
+// response textarea is never wiped out by a background refresh.
+async function refreshOthers(){
+  if(STU.step!=='main') return;
+  await refreshStudentGroups();
+  const el = document.getElementById('st-others');
+  if(!el) return;
+  const others = STU.session.groupIds.map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  el.innerHTML = others.length? others.map(g=>otherGroupCard(g)).join('') : '<div class="empty">No other groups yet.</div>';
+  bindOthersLikeButtons(el);
+}
+
+function bindIndivLikeButtons(container){
+  if(!container) return;
+  container.querySelectorAll('[data-like-sid]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const sid = btn.dataset.likeSid;
+      const key = `disc-indiv-like:${STU.code}:${sid}:${STU.sid}`;
+      if(STU.likes[sid]){ await sDel(key); STU.likes[sid]=false; }
+      else { await sSet(key, true); STU.likes[sid]=true; }
+      await refreshIndividualOthers();
+    });
+  });
+}
+async function refreshIndividualOthers(){
+  if(STU.step!=='individualMain') return;
+  const keys = await sList(`disc-indiv:${STU.code}:`);
+  const others = [];
+  for(const k of keys){
+    const r = await sGet(k);
+    if(!r || r.sid===STU.sid) continue;
+    const likeKeys = await sList(`disc-indiv-like:${STU.code}:${r.sid}:`);
+    others.push({...r, likeCount: likeKeys.length});
+  }
+  others.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  STU.indivOthers = others;
+  const el = document.getElementById('st-others');
+  if(!el) return;
+  el.innerHTML = others.length? others.map(r=>otherIndividualCard(r)).join('') : '<div class="empty">No other responses yet.</div>';
+  bindIndivLikeButtons(el);
+}
+async function loadIndividualLikes(){
+  const keys = await sList(`disc-indiv:${STU.code}:`);
+  for(const k of keys){
+    const sid = k.split(':').pop();
+    if(sid===STU.sid) continue;
+    const v = await sGet(`disc-indiv-like:${STU.code}:${sid}:${STU.sid}`);
+    STU.likes[sid] = !!v;
+  }
+}
+async function enterIndividual(){
+  let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+  if(!r){ r = {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachment:null}; await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r); }
+  STU.individual = r;
+  STU.opinionEditMode = undefined;
+  await loadIndividualLikes();
+  await persistStudentState();
+  STU.step = 'individualMain';
+  render();
+  await refreshIndividualOthers();
+  startStudentPolling();
+}
+
+async function loadGroupsForSession(){
+  const groups = {};
+  for(const gid of STU.session.groupIds){ const g = await sGet(`disc-group:${STU.code}:${gid}`); if(g) groups[gid]=g; }
+  STU.groups = groups;
+}
+async function enterGroup(gid){
+  STU.myGroupId = gid;
+  STU.opinionEditMode = undefined;
+  await loadLikes();
+  await persistStudentState();
+  STU.step='main'; render(); startStudentPolling();
+}
+async function persistStudentState(){
+  await sSet(STU_KEY, { code:STU.code, sid:STU.sid, name:STU.name, myGroupId:STU.myGroupId }, false);
+}
+async function loadLikes(){
+  for(const gid of STU.session.groupIds){
+    const v = await sGet(`disc-like:${STU.code}:${gid}:${STU.sid}`);
+    STU.likes[gid] = !!v;
+  }
+}
+async function refreshStudentGroups(){
+  const groups = {};
+  for(const gid of STU.session.groupIds){
+    const g = await sGet(`disc-group:${STU.code}:${gid}`);
+    if(!g) continue;
+    const likeKeys = await sList(`disc-like:${STU.code}:${gid}:`);
+    g.likeCount = likeKeys.length;
+    groups[gid] = g;
+  }
+  STU.groups = groups;
+}
+function startStudentPolling(){
+  clearInterval(STU.pollHandle);
+  STU.pollHandle = setInterval(()=>{
+    if(STU.step==='individualMain') refreshIndividualOthers();
+    else refreshOthers();
+  }, 6000);
+}
+
+/* ---------- init: try to restore a previous student session ---------- */
+(async function init(){
+  const saved = await sGet(STU_KEY, false);
+  if(saved && saved.code){
+    const session = await sGet(`disc-session:${saved.code}`);
+    if(session){
+      ROLE = 'student';
+      STU.code = saved.code; STU.sid = saved.sid; STU.name = saved.name; STU.session = session;
+      if(session.groupMode === 'individual'){
+        await enterIndividual();
+        return;
+      }
+      await loadGroupsForSession();
+      if(saved.myGroupId && STU.groups[saved.myGroupId]){
+        STU.myGroupId = saved.myGroupId;
+        await loadLikes();
+        STU.step = 'main';
+        render();
+        startStudentPolling();
+        return;
+      } else if(session.groupMode !== 'preset' && session.groupMode !== 'random'){
+        STU.step = 'pickgroup';
+        render();
+        return;
+      }
+    } else {
+      await sDel(STU_KEY, false);
+    }
+  }
+  render();
+})();
+</script>
+</body>
+</html>
