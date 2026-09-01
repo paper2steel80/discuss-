@@ -22,6 +22,7 @@
   #main{max-width:780px;margin:0 auto;padding:40px 24px 80px;}
   .page-eyebrow{font-family:var(--serif);font-style:italic;color:var(--charcoal-soft);font-size:17px;margin:0 0 4px;}
   h1.page-title{font-family:var(--serif);font-weight:600;font-size:34px;margin:0 0 8px;color:var(--ink);line-height:1.3;}
+  .question-block{font-family:var(--serif);font-weight:600;font-size:20px;line-height:1.55;color:var(--ink);white-space:pre-wrap;margin:0 0 8px;}
   .page-desc{font-size:16.5px;color:var(--charcoal-soft);line-height:1.6;margin:0 0 26px;max-width:62ch;}
   .card{background:var(--paper);border:1px solid var(--line);padding:22px 24px;margin-bottom:18px;}
   .card h3{font-family:var(--serif);font-size:20.5px;margin:0 0 12px;color:var(--ink);font-weight:600;}
@@ -812,7 +813,7 @@ function viewProfProgress(){
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-dash2">← Dashboard</button></p>
   <div><span class="tag">${esc(s.subject)}</span><span class="tag">Week ${s.week}</span></div>
-  <h1 class="page-title" style="margin-top:8px;">${esc(s.question)}</h1>
+  <h1 class="question-block" style="margin-top:8px;">${esc(s.question)}</h1>
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
@@ -967,7 +968,7 @@ function studentMainView(){
   if(STU.opinionEditMode===undefined) STU.opinionEditMode = !my.opinion;
   return `
   <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
-  <h1 class="page-title">${esc(STU.session.question)}</h1>
+  <h1 class="question-block">${esc(STU.session.question)}</h1>
 
   <div class="card group-card mine">
     <div class="meta-row">
@@ -983,7 +984,7 @@ function studentMainView(){
     <label>Our group's response</label>
     <div class="opinion">${my.opinion ? esc(my.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
     ${my.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
-    <div style="margin-top:10px;"><button class="secondary small" id="st-edit-opinion">Edit response</button></div>
+    <div style="margin-top:10px;"><button class="secondary" id="st-edit-opinion">✏️ Edit my response</button></div>
     `}
 
     <button class="present-toggle ${my.presentWish?'active':''}" id="st-present-btn">✋ ${my.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
@@ -1025,7 +1026,7 @@ function studentIndividualMainView(){
   if(STU.opinionEditMode===undefined) STU.opinionEditMode = !me.opinion;
   return `
   <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
-  <h1 class="page-title">${esc(STU.session.question)}</h1>
+  <h1 class="question-block">${esc(STU.session.question)}</h1>
 
   <div class="card group-card mine">
     <div class="meta-row"><span class="gname">My response</span></div>
@@ -1037,7 +1038,7 @@ function studentIndividualMainView(){
     <label>Your response</label>
     <div class="opinion">${me.opinion ? esc(me.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
     ${me.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
-    <div style="margin-top:10px;"><button class="secondary small" id="st-edit-opinion">Edit response</button></div>
+    <div style="margin-top:10px;"><button class="secondary" id="st-edit-opinion">✏️ Edit my response</button></div>
     `}
 
     <button class="present-toggle ${me.presentWish?'active':''}" id="st-present-btn">✋ ${me.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
