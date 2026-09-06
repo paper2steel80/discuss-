@@ -567,6 +567,13 @@ function viewProfCreate(){
       <div class="field" style="max-width:120px;"><label>Week</label><input type="number" id="pc-week" value="${prefill.week||1}" min="1"></div>
     </div>
     <div class="field"><label>Discussion question</label><textarea id="pc-question" placeholder="e.g. What should we consider first when entering this market?"></textarea></div>
+    <div class="field">
+      <label>Reading material (optional — PDF, Word, image, etc., max 5MB)</label>
+      <div class="file-drop">
+        <input type="file" id="pc-reading-file">
+        <div id="pc-reading-status" style="margin-top:8px;">No file uploaded yet.</div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -602,7 +609,7 @@ function currentMode(){
 }
 function bindProfCreate(){
   document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
-  builder = { groupCount:4, roster:null };
+  builder = { groupCount:4, roster:null, readingMaterial:null };
   const uploadWrap = document.getElementById('pc-roster-upload');
   function refreshEditor(){
     const mode = currentMode();
@@ -615,6 +622,7 @@ function bindProfCreate(){
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
+  document.getElementById('pc-reading-file').addEventListener('change', (e)=>handleReadingFile(e, 'pc-reading-status'));
 
   document.getElementById('pc-start').addEventListener('click', async ()=>{
     const errEl = document.getElementById('pc-error');
@@ -647,7 +655,7 @@ function bindProfCreate(){
       groupIds.push(gid);
       await sSet(`disc-group:${code}:${gid}`, {id:gid, name:g.name, members:g.members, opinion:'', presentWish:false});
     }
-    const session = { roomCode:code, subject, week, question, groupMode:mode, groupIds, createdAt: Date.now() };
+    const session = { roomCode:code, subject, week, question, groupMode:mode, groupIds, readingMaterial: builder.readingMaterial || null, createdAt: Date.now() };
     await sSet(`disc-session:${code}`, session);
 
     PROF.index.push({code, subject, week, question, createdAt: session.createdAt});
@@ -655,6 +663,25 @@ function bindProfCreate(){
 
     PROF.activeSession = session; PROF_VIEW='progress'; render();
   });
+}
+function handleReadingFile(e, statusElId, onDone){
+  const file = e.target.files[0];
+  const statusEl = document.getElementById(statusElId);
+  if(!file) return;
+  if(file.size > 5*1024*1024){ statusEl.textContent = 'That file is over 5MB — please choose a smaller file.'; return; }
+  statusEl.textContent = 'Uploading…';
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const material = { name:file.name, type:file.type, dataUrl: ev.target.result };
+    if(statusElId==='pc-reading-status') builder.readingMaterial = material;
+    statusEl.innerHTML = `📎 ${esc(file.name)} <button class="secondary small" id="${statusElId}-remove">Remove</button>`;
+    document.getElementById(statusElId+'-remove').addEventListener('click', ()=>{
+      if(statusElId==='pc-reading-status') builder.readingMaterial = null;
+      statusEl.textContent = 'No file uploaded yet.';
+    });
+    if(onDone) onDone(material);
+  };
+  reader.readAsDataURL(file);
 }
 function handleRosterFile(e){
   const file = e.target.files[0];
@@ -702,6 +729,15 @@ function viewProfEdit(){
       <div class="field" style="max-width:120px;"><label>Week</label><input type="number" id="pc-week" value="${s.week}" min="1"></div>
     </div>
     <div class="field"><label>Discussion question</label><textarea id="pc-question">${esc(s.question)}</textarea></div>
+    <div class="field">
+      <label>Reading material (optional — PDF, Word, image, etc., max 5MB)</label>
+      <div class="file-drop">
+        <input type="file" id="pc-reading-file">
+        <div id="pc-reading-status" style="margin-top:8px;">
+          ${s.readingMaterial ? `📎 ${esc(s.readingMaterial.name)} <button class="secondary small" id="pc-reading-status-remove">Remove</button>` : 'No file uploaded yet.'}
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -734,7 +770,7 @@ async function deleteIndividualData(roomCode){
 function bindProfEdit(){
   const s = PROF.editingSession;
   document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
-  builder = { groupCount:(s.groupIds||[]).length, roster:null };
+  builder = { groupCount:(s.groupIds||[]).length, roster:null, readingMaterial: s.readingMaterial || null };
   const uploadWrap = document.getElementById('pc-roster-upload');
   function refreshEditor(){
     const mode = currentMode();
@@ -747,6 +783,12 @@ function bindProfEdit(){
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
+  document.getElementById('pc-reading-file').addEventListener('change', (e)=>handleReadingFile(e, 'pc-reading-status'));
+  const readingRemoveBtn = document.getElementById('pc-reading-status-remove');
+  if(readingRemoveBtn) readingRemoveBtn.addEventListener('click', ()=>{
+    builder.readingMaterial = null;
+    document.getElementById('pc-reading-status').textContent = 'No file uploaded yet.';
+  });
 
   document.getElementById('pc-start').addEventListener('click', async ()=>{
     const errEl = document.getElementById('pc-error');
@@ -796,7 +838,7 @@ function bindProfEdit(){
       }
     }
 
-    const updatedSession = { ...s, subject, week, question, groupMode:mode, groupIds };
+    const updatedSession = { ...s, subject, week, question, groupMode:mode, groupIds, readingMaterial: builder.readingMaterial || null };
     await sSet(`disc-session:${s.roomCode}`, updatedSession);
 
     const idxEntry = PROF.index.find(x=>x.code===s.roomCode);
@@ -808,12 +850,18 @@ function bindProfEdit(){
 }
 
 /* ================= PROFESSOR: PROGRESS ================= */
+function readingMaterialLink(session){
+  if(!session || !session.readingMaterial) return '';
+  const m = session.readingMaterial;
+  return `<p style="margin:0 0 16px;"><a class="attach-link" href="${m.dataUrl}" download="${escAttr(m.name)}" target="_blank">📄 Reading material: ${esc(m.name)}</a></p>`;
+}
 function viewProfProgress(){
   const s = PROF.activeSession;
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-dash2">← Dashboard</button></p>
   <div><span class="tag">${esc(s.subject)}</span><span class="tag">Week ${s.week}</span></div>
   <h1 class="question-block" style="margin-top:8px;">${esc(s.question)}</h1>
+  ${readingMaterialLink(s)}
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
@@ -916,6 +964,7 @@ function studentIdView(){
     <h1 class="page-title">Enter your student ID and name</h1>
   </div>
   <div style="max-width:320px;margin:0 auto;">
+    ${readingMaterialLink(STU.session)}
     <div class="field"><label>Student ID</label><input type="text" id="st-sid" placeholder="20231234"></div>
     <div class="field"><label>Name</label><input type="text" id="st-name" placeholder="Jane Kim"></div>
     <button class="brass" style="width:100%;" id="st-id-next">Join</button>
@@ -969,6 +1018,7 @@ function studentMainView(){
   return `
   <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
   <h1 class="question-block">${esc(STU.session.question)}</h1>
+  ${readingMaterialLink(STU.session)}
 
   <div class="card group-card mine">
     <div class="meta-row">
@@ -1027,6 +1077,7 @@ function studentIndividualMainView(){
   return `
   <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
   <h1 class="question-block">${esc(STU.session.question)}</h1>
+  ${readingMaterialLink(STU.session)}
 
   <div class="card group-card mine">
     <div class="meta-row"><span class="gname">My response</span></div>
