@@ -188,6 +188,13 @@ function getAttachments(obj){
   if(obj.attachment) return [obj.attachment];
   return [];
 }
+function getReadingMaterials(session){
+  if(!session) return [];
+  if(Array.isArray(session.readingMaterials)) return session.readingMaterials;
+  if(session.readingMaterials && typeof session.readingMaterials === 'object') return Object.values(session.readingMaterials);
+  if(session.readingMaterial) return [session.readingMaterial];
+  return [];
+}
 function attachmentLinksHTML(items){
   if(!items || !items.length) return '';
   return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a>`).join('')}</div>`;
@@ -206,6 +213,8 @@ function readFileAsDataURL(file){
 }
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_MB = 2;
+const MAX_READING_FILES = 5;
+const MAX_READING_MB = 5;
 // Creates a brand-new, temporary file input for every "add file" click instead of reusing
 // one persistent element. This avoids odd cases where a reused file input's change event
 // stops firing after the first use in some browsers.
@@ -224,12 +233,12 @@ function pickFiles(){
     input.click();
   });
 }
-async function addFilesToAttachments(fileList, existing){
+async function addFilesToAttachments(fileList, existing, maxCount=MAX_ATTACHMENTS, maxMB=MAX_ATTACHMENT_MB){
   const accepted = [...(existing||[])];
   const errors = [];
   for(const file of fileList){
-    if(accepted.length >= MAX_ATTACHMENTS){ errors.push(`Only up to ${MAX_ATTACHMENTS} files allowed — some files were skipped.`); break; }
-    if(file.size > MAX_ATTACHMENT_MB*1024*1024){ errors.push(`${file.name} is over ${MAX_ATTACHMENT_MB}MB — skipped.`); continue; }
+    if(accepted.length >= maxCount){ errors.push(`Only up to ${maxCount} files allowed — some files were skipped.`); break; }
+    if(file.size > maxMB*1024*1024){ errors.push(`${file.name} is over ${maxMB}MB — skipped.`); continue; }
     try{ const dataUrl = await readFileAsDataURL(file); accepted.push({name:file.name, type:file.type, dataUrl}); }
     catch(e){ errors.push(`Couldn't read ${file.name}.`); }
   }
@@ -364,6 +373,15 @@ function viewDashboard(){
     </div>
     <p style="font-size:13.5px;color:var(--charcoal-soft);margin:8px 0 0;">Type an existing course name to open it, or a new one to start it. You'll add sessions from inside that classroom.</p>
   </div>
+  <div class="card">
+    <label>Open a session by room code</label>
+    <div class="row" style="max-width:340px;">
+      <input type="text" id="dash-open-code" placeholder="e.g. 9838" maxlength="4">
+      <button class="secondary" id="dash-open-code-btn" style="flex:0 0 auto;">Open</button>
+    </div>
+    <div id="dash-open-error" class="error-text"></div>
+    <p style="font-size:13px;color:var(--charcoal-soft);margin:8px 0 0;">Use this on a different computer/browser, since the classroom list above is saved per device but session data itself is shared everywhere.</p>
+  </div>
   <hr class="hairline">
   <div id="dash-list" class="course-grid">
     ${courseNames.length ? courseNames.map(c=>courseTile(c, byCourse[c])).join('') : '<div class="empty">No classrooms yet. Open one above.</div>'}
@@ -402,6 +420,19 @@ function bindDashboard(){
     PROF.viewingCourse = name;
     dashOpenWeeks = new Set();
     PROF_VIEW='course'; render();
+  });
+  document.getElementById('dash-open-code-btn').addEventListener('click', async ()=>{
+    const code = document.getElementById('dash-open-code').value.trim();
+    const errEl = document.getElementById('dash-open-error');
+    if(!code){ errEl.textContent = 'Enter a room code.'; return; }
+    const session = await sGet(`disc-session:${code}`);
+    if(!session){ errEl.textContent = 'No session found for that room code.'; return; }
+    errEl.textContent = '';
+    if(!PROF.index.some(x=>x.code===code)){
+      PROF.index.push({code, subject:session.subject, week:session.week, question:session.question, createdAt: session.createdAt || Date.now()});
+      await sSet('session-index', PROF.index, false);
+    }
+    PROF.activeSession = session; PROF_VIEW='progress'; render();
   });
 }
 
@@ -638,11 +669,12 @@ function viewProfCreate(){
     </div>
     <div class="field"><label>Discussion question</label><textarea id="pc-question" placeholder="e.g. What should we consider first when entering this market?"></textarea></div>
     <div class="field">
-      <label>Reading material (optional — PDF, Word, image, etc., max 5MB)</label>
-      <div class="file-drop">
-        <input type="file" id="pc-reading-file">
-        <div id="pc-reading-status" style="margin-top:8px;">No file uploaded yet.</div>
+      <label>Reading material (optional — PDF, Word, image, etc., max 5MB each, up to 5 files)</label>
+      <div class="file-drop" id="pc-reading-dropzone">
+        <button class="secondary small" id="pc-reading-file-btn" type="button">+ Add file(s)</button>
+        <div style="font-size:13px;color:var(--charcoal-soft);margin-top:6px;">or drag and drop files here</div>
       </div>
+      <div id="pc-reading-status" style="margin-top:8px;">No files uploaded yet.</div>
     </div>
   </div>
 
@@ -679,7 +711,7 @@ function currentMode(){
 }
 function bindProfCreate(){
   document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
-  builder = { groupCount:4, roster:null, readingMaterial:null };
+  builder = { groupCount:4, roster:null, readingMaterials:[] };
   const uploadWrap = document.getElementById('pc-roster-upload');
   function refreshEditor(){
     const mode = currentMode();
@@ -692,7 +724,7 @@ function bindProfCreate(){
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
-  document.getElementById('pc-reading-file').addEventListener('change', (e)=>handleReadingFile(e, 'pc-reading-status'));
+  bindReadingMaterialUpload();
 
   document.getElementById('pc-start').addEventListener('click', async ()=>{
     const errEl = document.getElementById('pc-error');
@@ -725,7 +757,7 @@ function bindProfCreate(){
       groupIds.push(gid);
       await sSet(`disc-group:${code}:${gid}`, {id:gid, name:g.name, members:g.members, opinion:'', presentWish:false});
     }
-    const session = { roomCode:code, subject, week, question, groupMode:mode, groupIds, readingMaterial: builder.readingMaterial || null, createdAt: Date.now() };
+    const session = { roomCode:code, subject, week, question, groupMode:mode, groupIds, readingMaterials: builder.readingMaterials || [], createdAt: Date.now() };
     await sSet(`disc-session:${code}`, session);
 
     PROF.index.push({code, subject, week, question, createdAt: session.createdAt});
@@ -734,25 +766,38 @@ function bindProfCreate(){
     PROF.activeSession = session; PROF_VIEW='progress'; render();
   });
 }
-function handleReadingFile(e, statusElId, onDone){
-  const file = e.target.files[0];
-  const statusEl = document.getElementById(statusElId);
-  if(!file) return;
-  if(file.size > 5*1024*1024){ statusEl.textContent = 'That file is over 5MB — please choose a smaller file.'; return; }
-  statusEl.textContent = 'Uploading…';
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    const material = { name:file.name, type:file.type, dataUrl: ev.target.result };
-    if(statusElId==='pc-reading-status') builder.readingMaterial = material;
-    statusEl.innerHTML = `📎 ${esc(file.name)} <button class="secondary small" id="${statusElId}-remove">Remove</button>`;
-    document.getElementById(statusElId+'-remove').addEventListener('click', ()=>{
-      if(statusElId==='pc-reading-status') builder.readingMaterial = null;
-      statusEl.textContent = 'No file uploaded yet.';
+// Shared by both the create and edit screens. Reading material files are staged in
+// builder.readingMaterials (in memory) and only written to Firebase when the session is saved.
+function bindReadingMaterialUpload(){
+  const statusEl = document.getElementById('pc-reading-status');
+  function refreshStatus(){
+    statusEl.innerHTML = attachEditorStatusHTML(builder.readingMaterials);
+    statusEl.querySelectorAll('[data-attach-remove]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        builder.readingMaterials.splice(+btn.dataset.attachRemove, 1);
+        refreshStatus();
+      });
     });
-    if(onDone) onDone(material);
-  };
-  reader.readAsDataURL(file);
+  }
+  refreshStatus();
+  async function doUpload(files){
+    if(!files || !files.length) return;
+    statusEl.textContent = 'Uploading…';
+    const {accepted, errors} = await addFilesToAttachments(files, builder.readingMaterials, MAX_READING_FILES, MAX_READING_MB);
+    builder.readingMaterials = accepted;
+    refreshStatus();
+    if(errors.length) statusEl.innerHTML += `<div class="error-text">${errors.map(esc).join('<br>')}</div>`;
+  }
+  const btn = document.getElementById('pc-reading-file-btn');
+  if(btn) btn.addEventListener('click', async ()=>{ await doUpload(await pickFiles()); });
+  const dz = document.getElementById('pc-reading-dropzone');
+  if(dz){
+    ['dragenter','dragover'].forEach(evt=>dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.add('dragover'); }));
+    ['dragleave','dragend'].forEach(evt=>dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.remove('dragover'); }));
+    dz.addEventListener('drop', async (e)=>{ e.preventDefault(); dz.classList.remove('dragover'); await doUpload(e.dataTransfer.files); });
+  }
 }
+
 function handleRosterFile(e){
   const file = e.target.files[0];
   const statusEl = document.getElementById('pc-roster-status');
@@ -800,13 +845,12 @@ function viewProfEdit(){
     </div>
     <div class="field"><label>Discussion question</label><textarea id="pc-question">${esc(s.question)}</textarea></div>
     <div class="field">
-      <label>Reading material (optional — PDF, Word, image, etc., max 5MB)</label>
-      <div class="file-drop">
-        <input type="file" id="pc-reading-file">
-        <div id="pc-reading-status" style="margin-top:8px;">
-          ${s.readingMaterial ? `📎 ${esc(s.readingMaterial.name)} <button class="secondary small" id="pc-reading-status-remove">Remove</button>` : 'No file uploaded yet.'}
-        </div>
+      <label>Reading material (optional — PDF, Word, image, etc., max 5MB each, up to 5 files)</label>
+      <div class="file-drop" id="pc-reading-dropzone">
+        <button class="secondary small" id="pc-reading-file-btn" type="button">+ Add file(s)</button>
+        <div style="font-size:13px;color:var(--charcoal-soft);margin-top:6px;">or drag and drop files here</div>
       </div>
+      <div id="pc-reading-status" style="margin-top:8px;">${attachEditorStatusHTML(getReadingMaterials(s))}</div>
     </div>
   </div>
 
@@ -840,7 +884,7 @@ async function deleteIndividualData(roomCode){
 function bindProfEdit(){
   const s = PROF.editingSession;
   document.getElementById('back-dash').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
-  builder = { groupCount:(s.groupIds||[]).length, roster:null, readingMaterial: s.readingMaterial || null };
+  builder = { groupCount:(s.groupIds||[]).length, roster:null, readingMaterials: getReadingMaterials(s) };
   const uploadWrap = document.getElementById('pc-roster-upload');
   function refreshEditor(){
     const mode = currentMode();
@@ -853,12 +897,7 @@ function bindProfEdit(){
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
-  document.getElementById('pc-reading-file').addEventListener('change', (e)=>handleReadingFile(e, 'pc-reading-status'));
-  const readingRemoveBtn = document.getElementById('pc-reading-status-remove');
-  if(readingRemoveBtn) readingRemoveBtn.addEventListener('click', ()=>{
-    builder.readingMaterial = null;
-    document.getElementById('pc-reading-status').textContent = 'No file uploaded yet.';
-  });
+  bindReadingMaterialUpload();
 
   document.getElementById('pc-start').addEventListener('click', async ()=>{
     const errEl = document.getElementById('pc-error');
@@ -908,7 +947,7 @@ function bindProfEdit(){
       }
     }
 
-    const updatedSession = { ...s, subject, week, question, groupMode:mode, groupIds, readingMaterial: builder.readingMaterial || null };
+    const updatedSession = { ...s, subject, week, question, groupMode:mode, groupIds, readingMaterials: builder.readingMaterials || [] };
     await sSet(`disc-session:${s.roomCode}`, updatedSession);
 
     const idxEntry = PROF.index.find(x=>x.code===s.roomCode);
@@ -921,9 +960,10 @@ function bindProfEdit(){
 
 /* ================= PROFESSOR: PROGRESS ================= */
 function readingMaterialLink(session){
-  if(!session || !session.readingMaterial) return '';
-  const m = session.readingMaterial;
-  return `<p style="margin:0 0 16px;"><a class="attach-link" href="${m.dataUrl}" download="${escAttr(m.name)}" target="_blank">📄 Reading material: ${esc(m.name)}</a></p>`;
+  const items = getReadingMaterials(session);
+  if(!items.length) return '';
+  const links = items.map(m=>`<a class="attach-link" href="${m.dataUrl}" download="${escAttr(m.name)}" target="_blank">📄 ${esc(m.name)}</a>`).join(' ');
+  return `<p style="margin:0 0 16px;">${links}</p>`;
 }
 function viewProfProgress(){
   const s = PROF.activeSession;
@@ -1276,19 +1316,23 @@ function bindStudent(){
       const statusEl = document.getElementById('st-attach-status');
       if(!files || !files.length) return;
       statusEl.textContent = 'Uploading…';
-      let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
-      const existingBefore = getAttachments(r);
-      const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
-      r.attachments = accepted;
-      delete r.attachment;
-      const ok = await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
-      const verify = ok ? await sGet(`disc-indiv:${STU.code}:${STU.sid}`) : null;
-      const saved = verify ? getAttachments(verify) : getAttachments(r);
-      STU.individual = verify || r;
-      const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
-      const debugLine = `<div style="font-size:12px;color:#999;">[debug] found before: ${existingBefore.length}, sending: ${accepted.length}, server now has: ${saved.length}, write ok: ${ok}</div>`;
-      statusEl.innerHTML = debugLine + attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
-      bindIndivAttachRemove(statusEl);
+      try{
+        let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+        const existingBefore = getAttachments(r);
+        const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
+        r.attachments = accepted;
+        delete r.attachment;
+        const ok = await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+        const verify = ok ? await sGet(`disc-indiv:${STU.code}:${STU.sid}`) : null;
+        const saved = verify ? getAttachments(verify) : getAttachments(r);
+        STU.individual = verify || r;
+        const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please try again.' : '';
+        statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
+        bindIndivAttachRemove(statusEl);
+      }catch(err){
+        console.error('Attachment upload failed', err);
+        statusEl.innerHTML = `<div class="error-text">Upload error: ${esc(err && err.message ? err.message : String(err))}</div>`;
+      }
     }
     const attachBtn = document.getElementById('st-attach-file-btn');
     if(attachBtn) attachBtn.addEventListener('click', async (ev)=>{
@@ -1423,20 +1467,24 @@ function bindStudent(){
     const statusEl = document.getElementById('st-attach-status');
     if(!files || !files.length) return;
     statusEl.textContent = 'Uploading…';
-    let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
-    const existingBefore = getAttachments(g);
-    const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
-    g.attachments = accepted;
-    delete g.attachment;
-    const ok = await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
-    // Re-read from the server so what's shown is what's actually saved, not just assumed.
-    const verify = ok ? await sGet(`disc-group:${STU.code}:${STU.myGroupId}`) : null;
-    const saved = verify ? getAttachments(verify) : getAttachments(g);
-    STU.groups[STU.myGroupId] = verify || g;
-    const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
-    const debugLine = `<div style="font-size:12px;color:#999;">[debug] found before: ${existingBefore.length}, sending: ${accepted.length}, server now has: ${saved.length}, write ok: ${ok}</div>`;
-    statusEl.innerHTML = debugLine + attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
-    bindGroupAttachRemove(statusEl);
+    try{
+      let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+      const existingBefore = getAttachments(g);
+      const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
+      g.attachments = accepted;
+      delete g.attachment;
+      const ok = await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+      // Re-read from the server so what's shown is what's actually saved, not just assumed.
+      const verify = ok ? await sGet(`disc-group:${STU.code}:${STU.myGroupId}`) : null;
+      const saved = verify ? getAttachments(verify) : getAttachments(g);
+      STU.groups[STU.myGroupId] = verify || g;
+      const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please try again.' : '';
+      statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
+      bindGroupAttachRemove(statusEl);
+    }catch(err){
+      console.error('Attachment upload failed', err);
+      statusEl.innerHTML = `<div class="error-text">Upload error: ${esc(err && err.message ? err.message : String(err))}</div>`;
+    }
   }
   const attachBtn = document.getElementById('st-attach-file-btn');
   if(attachBtn) attachBtn.addEventListener('click', async (ev)=>{
