@@ -77,6 +77,7 @@
   .role-choice{display:block;width:100%;text-align:center;padding:20px;margin-bottom:12px;background:#fff;border:1.5px solid var(--line);font-family:var(--serif);font-size:22.5px;color:var(--ink);}
   .role-choice:hover{border-color:var(--mint);}
   .file-drop{border:1.5px dashed var(--line);padding:18px;text-align:center;font-size:15.5px;color:var(--charcoal-soft);background:var(--mint-pale);}
+  .file-drop.dragover{border-color:var(--mint-deep);background:#CDEDE0;}
   .link-btn{background:none;border:none;color:var(--mint-deep);font-weight:600;padding:0;text-decoration:underline;}
   .link-btn:hover{background:none;color:var(--ink);}
   .course-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
@@ -205,6 +206,24 @@ function readFileAsDataURL(file){
 }
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_MB = 2;
+// Creates a brand-new, temporary file input for every "add file" click instead of reusing
+// one persistent element. This avoids odd cases where a reused file input's change event
+// stops firing after the first use in some browsers.
+function pickFiles(){
+  return new Promise((resolve)=>{
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    document.body.appendChild(input);
+    input.addEventListener('change', ()=>{
+      resolve(input.files);
+      document.body.removeChild(input);
+    }, {once:true});
+    input.click();
+  });
+}
 async function addFilesToAttachments(fileList, existing){
   const accepted = [...(existing||[])];
   const errors = [];
@@ -292,7 +311,7 @@ function viewProfAuth(){
     <h1 class="page-title">Enter the instructor passcode</h1>
   </div>
   <div style="max-width:280px;margin:0 auto;">
-    <input type="text" id="prof-passcode" class="roomcode-input" placeholder="••••" maxlength="12">
+    <input type="password" id="prof-passcode" class="roomcode-input" placeholder="••••" maxlength="12" autocomplete="off">
     <div style="height:12px;"></div>
     <button class="brass" style="width:100%;" id="prof-passcode-go">Enter</button>
     <div class="error-text">${esc(profAuthError)}</div>
@@ -1099,7 +1118,10 @@ function studentMainView(){
 
     <div class="field" style="margin-top:16px;">
       <label>Response too long to type? Attach files instead (max ${MAX_ATTACHMENT_MB}MB each, up to ${MAX_ATTACHMENTS})</label>
-      <input type="file" id="st-attach-file" multiple>
+      <div class="file-drop" id="st-attach-dropzone">
+        <button class="secondary small" id="st-attach-file-btn" type="button">+ Add file(s)</button>
+        <div style="font-size:13px;color:var(--charcoal-soft);margin-top:6px;">or drag and drop files here</div>
+      </div>
       <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
         ${attachEditorStatusHTML(getAttachments(my))}
       </div>
@@ -1154,7 +1176,10 @@ function studentIndividualMainView(){
 
     <div class="field" style="margin-top:16px;">
       <label>Response too long to type? Attach files instead (max ${MAX_ATTACHMENT_MB}MB each, up to ${MAX_ATTACHMENTS})</label>
-      <input type="file" id="st-attach-file" multiple>
+      <div class="file-drop" id="st-attach-dropzone">
+        <button class="secondary small" id="st-attach-file-btn" type="button">+ Add file(s)</button>
+        <div style="font-size:13px;color:var(--charcoal-soft);margin-top:6px;">or drag and drop files here</div>
+      </div>
       <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
         ${attachEditorStatusHTML(getAttachments(me))}
       </div>
@@ -1247,14 +1272,13 @@ function bindStudent(){
       btn.classList.toggle('active', r.presentWish);
       btn.textContent = r.presentWish ? "✋ Hand raised — we'd like to present" : '✋ Raise hand to present';
     });
-    const attachInput = document.getElementById('st-attach-file');
-    if(attachInput) attachInput.addEventListener('change', async (e)=>{
-      const files = e.target.files;
+    async function uploadIndivFiles(files){
       const statusEl = document.getElementById('st-attach-status');
       if(!files || !files.length) return;
       statusEl.textContent = 'Uploading…';
       let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
-      const {accepted, errors} = await addFilesToAttachments(files, getAttachments(r));
+      const existingBefore = getAttachments(r);
+      const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
       r.attachments = accepted;
       delete r.attachment;
       const ok = await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
@@ -1262,10 +1286,25 @@ function bindStudent(){
       const saved = verify ? getAttachments(verify) : getAttachments(r);
       STU.individual = verify || r;
       const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
-      statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
+      const debugLine = `<div style="font-size:12px;color:#999;">[debug] found before: ${existingBefore.length}, sending: ${accepted.length}, server now has: ${saved.length}, write ok: ${ok}</div>`;
+      statusEl.innerHTML = debugLine + attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
       bindIndivAttachRemove(statusEl);
-      attachInput.value = '';
+    }
+    const attachBtn = document.getElementById('st-attach-file-btn');
+    if(attachBtn) attachBtn.addEventListener('click', async (ev)=>{
+      ev.stopPropagation();
+      const files = await pickFiles();
+      await uploadIndivFiles(files);
     });
+    const dropzone = document.getElementById('st-attach-dropzone');
+    if(dropzone){
+      ['dragenter','dragover'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('dragover'); }));
+      ['dragleave','dragend'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('dragover'); }));
+      dropzone.addEventListener('drop', async (e)=>{
+        e.preventDefault(); dropzone.classList.remove('dragover');
+        await uploadIndivFiles(e.dataTransfer.files);
+      });
+    }
     bindIndivAttachRemove(document.getElementById('st-attach-status'));
     function bindIndivAttachRemove(container){
       if(!container) return;
@@ -1380,14 +1419,13 @@ function bindStudent(){
     btn.classList.toggle('active', g.presentWish);
     btn.textContent = g.presentWish ? "✋ Hand raised — we'd like to present" : '✋ Raise hand to present';
   });
-  const attachInput = document.getElementById('st-attach-file');
-  if(attachInput) attachInput.addEventListener('change', async (e)=>{
-    const files = e.target.files;
+  async function uploadGroupFiles(files){
     const statusEl = document.getElementById('st-attach-status');
     if(!files || !files.length) return;
     statusEl.textContent = 'Uploading…';
     let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
-    const {accepted, errors} = await addFilesToAttachments(files, getAttachments(g));
+    const existingBefore = getAttachments(g);
+    const {accepted, errors} = await addFilesToAttachments(files, existingBefore);
     g.attachments = accepted;
     delete g.attachment;
     const ok = await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
@@ -1396,10 +1434,25 @@ function bindStudent(){
     const saved = verify ? getAttachments(verify) : getAttachments(g);
     STU.groups[STU.myGroupId] = verify || g;
     const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
-    statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
+    const debugLine = `<div style="font-size:12px;color:#999;">[debug] found before: ${existingBefore.length}, sending: ${accepted.length}, server now has: ${saved.length}, write ok: ${ok}</div>`;
+    statusEl.innerHTML = debugLine + attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
     bindGroupAttachRemove(statusEl);
-    attachInput.value = '';
+  }
+  const attachBtn = document.getElementById('st-attach-file-btn');
+  if(attachBtn) attachBtn.addEventListener('click', async (ev)=>{
+    ev.stopPropagation();
+    const files = await pickFiles();
+    await uploadGroupFiles(files);
   });
+  const dropzone = document.getElementById('st-attach-dropzone');
+  if(dropzone){
+    ['dragenter','dragover'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('dragover'); }));
+    ['dragleave','dragend'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('dragover'); }));
+    dropzone.addEventListener('drop', async (e)=>{
+      e.preventDefault(); dropzone.classList.remove('dragover');
+      await uploadGroupFiles(e.dataTransfer.files);
+    });
+  }
   bindGroupAttachRemove(document.getElementById('st-attach-status'));
   function bindGroupAttachRemove(container){
     if(!container) return;
