@@ -1253,9 +1253,12 @@ function bindStudent(){
       const {accepted, errors} = await addFilesToAttachments(files, getAttachments(r));
       r.attachments = accepted;
       delete r.attachment;
-      await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
-      STU.individual = r;
-      statusEl.innerHTML = attachEditorStatusHTML(accepted) + (errors.length ? `<div class="error-text">${errors.map(esc).join('<br>')}</div>` : '');
+      const ok = await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+      const verify = ok ? await sGet(`disc-indiv:${STU.code}:${STU.sid}`) : null;
+      const saved = verify ? getAttachments(verify) : getAttachments(r);
+      STU.individual = verify || r;
+      const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
+      statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
       bindIndivAttachRemove(statusEl);
       attachInput.value = '';
     });
@@ -1383,9 +1386,13 @@ function bindStudent(){
     const {accepted, errors} = await addFilesToAttachments(files, getAttachments(g));
     g.attachments = accepted;
     delete g.attachment;
-    await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
-    STU.groups[STU.myGroupId] = g;
-    statusEl.innerHTML = attachEditorStatusHTML(accepted) + (errors.length ? `<div class="error-text">${errors.map(esc).join('<br>')}</div>` : '');
+    const ok = await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+    // Re-read from the server so what's shown is what's actually saved, not just assumed.
+    const verify = ok ? await sGet(`disc-group:${STU.code}:${STU.myGroupId}`) : null;
+    const saved = verify ? getAttachments(verify) : getAttachments(g);
+    STU.groups[STU.myGroupId] = verify || g;
+    const saveError = (!ok || !verify || saved.length !== accepted.length) ? 'Some files may not have saved — please check the list below and try again if any are missing.' : '';
+    statusEl.innerHTML = attachEditorStatusHTML(saved) + ((errors.length||saveError) ? `<div class="error-text">${[...errors.map(esc), saveError].filter(Boolean).join('<br>')}</div>` : '');
     bindGroupAttachRemove(statusEl);
     attachInput.value = '';
   });
