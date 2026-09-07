@@ -155,6 +155,17 @@ async function sList(prefix, shared=true){
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
+// Lists the group ids that actually exist for a room right now (by reading Firebase directly),
+// rather than trusting a possibly-stale groupIds array. Needed because in Self-select mode,
+// students create groups on the fly, so the live set of groups can grow after session creation.
+async function liveGroupIds(code){
+  const keys = await sList(`disc-group:${code}:`);
+  return keys.map(k=>k.split(':').pop());
+}
+async function groupIdsForSession(session){
+  if(session.groupMode === 'self') return await liveGroupIds(session.roomCode);
+  return session.groupIds || [];
+}
 function shuffleArray(arr){
   for(let i=arr.length-1;i>0;i--){
     const j = Math.floor(Math.random()*(i+1));
@@ -165,6 +176,42 @@ function shuffleArray(arr){
 function roomCode(){ return String(Math.floor(1000+Math.random()*9000)); }
 function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+// Attachments are stored as an array now; getAttachments() also reads old single-file records for compatibility.
+function getAttachments(obj){
+  if(!obj) return [];
+  if(Array.isArray(obj.attachments)) return obj.attachments;
+  if(obj.attachment) return [obj.attachment];
+  return [];
+}
+function attachmentLinksHTML(items){
+  if(!items || !items.length) return '';
+  return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a>`).join('')}</div>`;
+}
+function attachEditorStatusHTML(items){
+  if(!items || !items.length) return 'No files attached.';
+  return items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a><button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
+}
+function readFileAsDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_MB = 2;
+async function addFilesToAttachments(fileList, existing){
+  const accepted = [...(existing||[])];
+  const errors = [];
+  for(const file of fileList){
+    if(accepted.length >= MAX_ATTACHMENTS){ errors.push(`Only up to ${MAX_ATTACHMENTS} files allowed — some files were skipped.`); break; }
+    if(file.size > MAX_ATTACHMENT_MB*1024*1024){ errors.push(`${file.name} is over ${MAX_ATTACHMENT_MB}MB — skipped.`); continue; }
+    try{ const dataUrl = await readFileAsDataURL(file); accepted.push({name:file.name, type:file.type, dataUrl}); }
+    catch(e){ errors.push(`Couldn't read ${file.name}.`); }
+  }
+  return {accepted, errors};
+}
 
 /* ---------- app state ---------- */
 let ROLE = null;
@@ -404,7 +451,7 @@ function bindProfCourse(){
     for(const idx of affected){
       const session = await sGet(`disc-session:${idx.code}`);
       if(session){
-        for(const gid of (session.groupIds || [])){
+        for(const gid of (await liveGroupIds(idx.code))){
           const likeKeys = await sList(`disc-like:${idx.code}:${gid}:`);
           for(const k of likeKeys) await sDel(k);
           await sDel(`disc-group:${idx.code}:${gid}`);
@@ -439,7 +486,7 @@ function bindProfCourse(){
     if(!confirm('Delete this session and all its responses? This cannot be undone.')) return;
     const session = await sGet(`disc-session:${code}`);
     if(session){
-      for(const gid of (session.groupIds || [])){
+      for(const gid of (await liveGroupIds(code))){
         const likeKeys = await sList(`disc-like:${code}:${gid}:`);
         for(const k of likeKeys) await sDel(k);
         await sDel(`disc-group:${code}:${gid}`);
@@ -488,7 +535,7 @@ async function exportAllData(){
         }
         continue;
       }
-      for(const gid of (session.groupIds || [])){
+      for(const gid of (await liveGroupIds(session.roomCode))){
         const g = await sGet(`disc-group:${session.roomCode}:${gid}`);
         if(!g) continue;
         const likeKeys = await sList(`disc-like:${session.roomCode}:${gid}:`);
@@ -580,7 +627,7 @@ function viewProfCreate(){
     <h3>How are groups formed?</h3>
     <div class="radio-group" id="pc-mode-group">
       <label class="radio-opt" data-mode="preset"><input type="radio" name="pc-mode" value="preset" checked><div><div class="rt">Preset roster</div><div class="rd">Upload a class roster (Excel). Students are matched automatically by student ID.</div></div></label>
-      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self"><div><div class="rt">Self-select</div><div class="rd">Set the number of groups. Students pick which group to join, and can switch later.</div></div></label>
+      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self"><div><div class="rt">Self-select</div><div class="rd">No fixed group count. Students name their own group and add members (any size), or join a group a classmate already started.</div></div></label>
       <label class="radio-opt" data-mode="random"><input type="radio" name="pc-mode" value="random"><div><div class="rt">Random assignment</div><div class="rd">Upload a class roster (Excel). We'll shuffle everyone and split them evenly into groups.</div></div></label>
       <label class="radio-opt" data-mode="individual"><input type="radio" name="pc-mode" value="individual"><div><div class="rt">Individual (no groups)</div><div class="rd">No groups — each student posts their own response under their own name.</div></div></label>
     </div>
@@ -618,7 +665,7 @@ function bindProfCreate(){
     if(mode==='preset' || mode==='random'){
       document.getElementById('pc-roster-file').addEventListener('change', handleRosterFile);
     }
-    document.getElementById('pc-group-count-field').style.display = (mode==='individual') ? 'none' : '';
+    document.getElementById('pc-group-count-field').style.display = (mode==='individual' || mode==='self') ? 'none' : '';
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
@@ -635,7 +682,7 @@ function bindProfCreate(){
     if((mode==='preset' || mode==='random') && (!builder.roster || !builder.roster.length)){ errEl.textContent = 'Please upload a roster file.'; return; }
 
     const groupsToCreate = [];
-    if(mode !== 'individual'){
+    if(mode==='preset' || mode==='random'){
       for(let i=1;i<=groupCount;i++) groupsToCreate.push({name:`Group ${i}`, members:[]});
       if(mode==='preset'){
         builder.roster.forEach((stu, i)=>{ groupsToCreate[i % groupCount].members.push(stu); });
@@ -744,7 +791,7 @@ function viewProfEdit(){
     <h3>How are groups formed?</h3>
     <div class="radio-group" id="pc-mode-group">
       <label class="radio-opt" data-mode="preset"><input type="radio" name="pc-mode" value="preset" ${s.groupMode==='preset'?'checked':''}><div><div class="rt">Preset roster</div><div class="rd">Upload a class roster (Excel). Students are matched automatically by student ID.</div></div></label>
-      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self" ${s.groupMode==='self'?'checked':''}><div><div class="rt">Self-select</div><div class="rd">Set the number of groups. Students pick which group to join, and can switch later.</div></div></label>
+      <label class="radio-opt" data-mode="self"><input type="radio" name="pc-mode" value="self" ${s.groupMode==='self'?'checked':''}><div><div class="rt">Self-select</div><div class="rd">No fixed group count. Students name their own group and add members (any size), or join a group a classmate already started.</div></div></label>
       <label class="radio-opt" data-mode="random"><input type="radio" name="pc-mode" value="random" ${s.groupMode==='random'?'checked':''}><div><div class="rt">Random assignment</div><div class="rd">Upload a class roster (Excel). We'll shuffle everyone and split them evenly into groups.</div></div></label>
       <label class="radio-opt" data-mode="individual"><input type="radio" name="pc-mode" value="individual" ${s.groupMode==='individual'?'checked':''}><div><div class="rt">Individual (no groups)</div><div class="rd">No groups — each student posts their own response under their own name.</div></div></label>
     </div>
@@ -779,7 +826,7 @@ function bindProfEdit(){
     if(mode==='preset' || mode==='random'){
       document.getElementById('pc-roster-file').addEventListener('change', handleRosterFile);
     }
-    document.getElementById('pc-group-count-field').style.display = (mode==='individual') ? 'none' : '';
+    document.getElementById('pc-group-count-field').style.display = (mode==='individual' || mode==='self') ? 'none' : '';
   }
   document.querySelectorAll('input[name="pc-mode"]').forEach(r=>r.addEventListener('change', refreshEditor));
   refreshEditor();
@@ -815,14 +862,14 @@ function bindProfEdit(){
 
     let groupIds = s.groupIds || [];
     if(structuralChange){
-      for(const gid of (s.groupIds||[])){
+      for(const gid of (await liveGroupIds(s.roomCode))){
         const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
         for(const k of likeKeys) await sDel(k);
         await sDel(`disc-group:${s.roomCode}:${gid}`);
       }
       if(s.groupMode === 'individual'){ await deleteIndividualData(s.roomCode); }
       groupIds = [];
-      if(mode !== 'individual'){
+      if(mode==='preset' || mode==='random'){
         const groupsToCreate = [];
         for(let i=1;i<=groupCount;i++) groupsToCreate.push({name:`Group ${i}`, members:[]});
         if(mode==='preset'){
@@ -902,25 +949,31 @@ async function loadProfProgress(attempt=1){
           ${r.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
         </div>
         <div class="opinion">${r.opinion ? esc(r.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-        ${r.attachment ? `<div class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a></div>` : ''}
+        ${attachmentLinksHTML(getAttachments(r))}
         <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${r.likeCount} likes</span></div>
       </div>`).join('');
     return;
   }
 
+  const gids = await groupIdsForSession(s);
   const groups = [];
-  for(const gid of (s.groupIds||[])){
+  for(const gid of gids){
     const g = await sGet(`disc-group:${s.roomCode}:${gid}`);
     if(!g) continue;
     const likeKeys = await sList(`disc-like:${s.roomCode}:${gid}:`);
     groups.push({...g, likeCount: likeKeys.length});
   }
-  if(!groups.length && (s.groupIds||[]).length && attempt<6){
+  if(!groups.length && s.groupMode!=='self' && gids.length && attempt<6){
     if(attempt>=2) el.innerHTML = '<div class="empty">Still loading — this can take a few seconds right after creating a session…</div>';
     await sleep(1000 * attempt);
     return loadProfProgress(attempt+1);
   }
-  if(!groups.length){ el.innerHTML = '<div class="empty">Still no group data. Please click Refresh below — this can happen right after uploading a large roster.</div>'; return; }
+  if(!groups.length){
+    el.innerHTML = s.groupMode==='self'
+      ? '<div class="empty">No groups yet. Groups will appear here as students create them.</div>'
+      : '<div class="empty">Still no group data. Please click Refresh below — this can happen right after uploading a large roster.</div>';
+    return;
+  }
   el.innerHTML = groups.map(g=>`
     <div class="group-card">
       <div class="meta-row">
@@ -929,7 +982,7 @@ async function loadProfProgress(attempt=1){
       </div>
       <div class="members">${(g.members||[]).length? (g.members||[]).map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') : 'No members yet'}</div>
       <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-      ${g.attachment ? `<div class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a></div>` : ''}
+      ${attachmentLinksHTML(getAttachments(g))}
       <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${g.likeCount} likes</span></div>
     </div>`).join('');
 }
@@ -939,7 +992,7 @@ function viewStudent(){
   if(STU.step==='code') return studentCodeView();
   if(STU.step==='id') return studentIdView();
   if(STU.step==='pickgroup') return studentPickGroupView();
-  if(STU.step==='teaminput') return studentTeamInputView();
+  if(STU.step==='teamcreate') return studentTeamCreateView();
   if(STU.step==='teamconfirm') return studentTeamConfirmView();
   if(STU.step==='individualMain') return studentIndividualMainView();
   return studentMainView();
@@ -972,28 +1025,29 @@ function studentIdView(){
   </div>`;
 }
 function studentPickGroupView(){
-  const groupList = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(Boolean);
+  const groupList = Object.values(STU.groups);
   return `
   <p class="page-eyebrow">${esc(STU.session.question)}</p>
-  <h1 class="page-title">Choose your group</h1>
+  <h1 class="page-title">Choose or create a group</h1>
   <div class="card">
-    ${groupList.map(g=>`<div class="group-choice" data-gid="${g.id}">${esc(g.name)} <span style="color:var(--charcoal-soft);font-size:14px;">(${(g.members||[]).length} members)</span></div>`).join('')}
+    <button class="brass" id="st-create-group-btn" style="width:100%;margin-bottom:${groupList.length?'16px':'0'};">+ Create a new group</button>
+    ${groupList.length ? groupList.map(g=>`<div class="group-choice" data-gid="${g.id}">${esc(g.name)} <span style="color:var(--charcoal-soft);font-size:14px;">(${(g.members||[]).length} members)</span></div>`).join('') : ''}
   </div>
   <div class="error-text">${esc(STU.error)}</div>`;
 }
-function studentTeamInputView(){
-  const g = STU.groups[STU.pendingGroupId];
+function studentTeamCreateView(){
   return `
   <p class="page-eyebrow">${esc(STU.session.question)}</p>
-  <h1 class="page-title">Set up ${esc(g.name)}</h1>
-  <p class="page-desc">Nobody's added to this group yet. Enter everyone in your group at once — you only need to do this one time for the whole team.</p>
+  <h1 class="page-title">Create a new group</h1>
   <div class="card">
+    <div class="field"><label>Group name</label><input type="text" id="st-team-name" placeholder="e.g. Team Falcon"></div>
     <div class="row">
       <div class="field"><label>Your student ID</label><input type="text" id="st-team-myid" placeholder="20231234"></div>
       <div class="field"><label>Your name</label><input type="text" id="st-team-myname" placeholder="Jane Kim"></div>
     </div>
-    <div class="field"><label>All members of ${esc(g.name)} — one per line: ID Name</label><textarea id="st-team-roster" placeholder="20231234 Jane Kim&#10;20235678 Alex Park&#10;20239012 Sam Lee" style="min-height:110px;"></textarea></div>
-    <button class="brass" id="st-team-save">Save team &amp; continue</button>
+    <div class="field"><label>Add other members now (optional) — one per line: ID Name</label><textarea id="st-team-roster" placeholder="20235678 Alex Park&#10;20239012 Sam Lee" style="min-height:90px;"></textarea></div>
+    <button class="brass" id="st-team-create-submit">Create group</button>
+    <button class="secondary" id="st-team-create-back" style="margin-left:8px;">← Back</button>
     <div class="error-text">${esc(STU.error)}</div>
   </div>`;
 }
@@ -1012,7 +1066,7 @@ function studentTeamConfirmView(){
 }
 function studentMainView(){
   const my = STU.groups[STU.myGroupId];
-  const others = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  const others = Object.values(STU.groups).filter(g=>g && g.id!==STU.myGroupId);
   const canSwitch = STU.session.groupMode === 'self';
   if(STU.opinionEditMode===undefined) STU.opinionEditMode = !my.opinion;
   return `
@@ -1040,10 +1094,10 @@ function studentMainView(){
     <button class="present-toggle ${my.presentWish?'active':''}" id="st-present-btn">✋ ${my.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
 
     <div class="field" style="margin-top:16px;">
-      <label>Response too long to type? Attach a file instead (max 2MB)</label>
-      <input type="file" id="st-attach-file">
+      <label>Response too long to type? Attach files instead (max ${MAX_ATTACHMENT_MB}MB each, up to ${MAX_ATTACHMENTS})</label>
+      <input type="file" id="st-attach-file" multiple>
       <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
-        ${my.attachment ? `<span class="attach-row"><a class="attach-link" href="${my.attachment.dataUrl}" download="${escAttr(my.attachment.name)}">📎 ${esc(my.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>` : 'No file attached.'}
+        ${attachEditorStatusHTML(getAttachments(my))}
       </div>
     </div>
   </div>
@@ -1064,7 +1118,7 @@ function otherGroupCard(g){
       ${g.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
     </div>
     <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-    ${g.attachment ? `<div class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a></div>` : ''}
+    ${attachmentLinksHTML(getAttachments(g))}
     <div class="meta-row">
       <button class="like-btn ${liked?'liked':''}" data-like="${g.id}">${liked?'♥ Liked':'♡ Like'} (${g.likeCount||0})</button>
     </div>
@@ -1072,7 +1126,7 @@ function otherGroupCard(g){
 }
 
 function studentIndividualMainView(){
-  const me = STU.individual || {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachment:null};
+  const me = STU.individual || {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachments:[]};
   if(STU.opinionEditMode===undefined) STU.opinionEditMode = !me.opinion;
   return `
   <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)} · <button class="link-btn" id="st-exit">not you? exit</button></p>
@@ -1095,10 +1149,10 @@ function studentIndividualMainView(){
     <button class="present-toggle ${me.presentWish?'active':''}" id="st-present-btn">✋ ${me.presentWish ? "Hand raised — we'd like to present" : 'Raise hand to present'}</button>
 
     <div class="field" style="margin-top:16px;">
-      <label>Response too long to type? Attach a file instead (max 2MB)</label>
-      <input type="file" id="st-attach-file">
+      <label>Response too long to type? Attach files instead (max ${MAX_ATTACHMENT_MB}MB each, up to ${MAX_ATTACHMENTS})</label>
+      <input type="file" id="st-attach-file" multiple>
       <div id="st-attach-status" style="font-size:14px;color:var(--charcoal-soft);margin-top:6px;">
-        ${me.attachment ? `<span class="attach-row"><a class="attach-link" href="${me.attachment.dataUrl}" download="${escAttr(me.attachment.name)}">📎 ${esc(me.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>` : 'No file attached.'}
+        ${attachEditorStatusHTML(getAttachments(me))}
       </div>
     </div>
   </div>
@@ -1119,7 +1173,7 @@ function otherIndividualCard(r){
       ${r.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
     </div>
     <div class="opinion">${r.opinion ? esc(r.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-    ${r.attachment ? `<div class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a></div>` : ''}
+    ${attachmentLinksHTML(getAttachments(r))}
     <div class="meta-row">
       <button class="like-btn ${liked?'liked':''}" data-like-sid="${escAttr(r.sid)}">${liked?'♥ Liked':'♡ Like'} (${r.likeCount||0})</button>
     </div>
@@ -1191,30 +1245,38 @@ function bindStudent(){
     });
     const attachInput = document.getElementById('st-attach-file');
     if(attachInput) attachInput.addEventListener('change', async (e)=>{
-      const file = e.target.files[0];
+      const files = e.target.files;
       const statusEl = document.getElementById('st-attach-status');
-      if(!file) return;
-      if(file.size > 2*1024*1024){ statusEl.innerHTML = 'That file is over 2MB — please choose a smaller file.'; return; }
+      if(!files || !files.length) return;
       statusEl.textContent = 'Uploading…';
-      const reader = new FileReader();
-      reader.onload = async (ev)=>{
-        let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
-        r.attachment = { name:file.name, type:file.type, dataUrl: ev.target.result };
-        await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
-        STU.individual = r;
-        statusEl.innerHTML = `<span class="attach-row"><a class="attach-link" href="${r.attachment.dataUrl}" download="${escAttr(r.attachment.name)}">📎 ${esc(r.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>`;
-        document.getElementById('st-attach-remove').addEventListener('click', removeIndivAttachment);
-      };
-      reader.readAsDataURL(file);
-    });
-    const removeBtn = document.getElementById('st-attach-remove');
-    if(removeBtn) removeBtn.addEventListener('click', removeIndivAttachment);
-    async function removeIndivAttachment(){
       let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
-      r.attachment = null;
+      const {accepted, errors} = await addFilesToAttachments(files, getAttachments(r));
+      r.attachments = accepted;
+      delete r.attachment;
       await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
       STU.individual = r;
-      document.getElementById('st-attach-status').textContent = 'No file attached.';
+      statusEl.innerHTML = attachEditorStatusHTML(accepted) + (errors.length ? `<div class="error-text">${errors.map(esc).join('<br>')}</div>` : '');
+      bindIndivAttachRemove(statusEl);
+      attachInput.value = '';
+    });
+    bindIndivAttachRemove(document.getElementById('st-attach-status'));
+    function bindIndivAttachRemove(container){
+      if(!container) return;
+      container.querySelectorAll('[data-attach-remove]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const idx = +btn.dataset.attachRemove;
+          let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
+          const items = getAttachments(r);
+          items.splice(idx, 1);
+          r.attachments = items;
+          delete r.attachment;
+          await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r);
+          STU.individual = r;
+          const statusEl = document.getElementById('st-attach-status');
+          statusEl.innerHTML = attachEditorStatusHTML(items);
+          bindIndivAttachRemove(statusEl);
+        });
+      });
     }
     bindIndivLikeButtons(document.getElementById('st-others'));
     document.getElementById('st-refresh').addEventListener('click', refreshIndividualOthers);
@@ -1224,29 +1286,32 @@ function bindStudent(){
     document.querySelectorAll('[data-gid]').forEach(el=>{
       el.addEventListener('click', async ()=>{
         const gid = el.dataset.gid;
-        const g = STU.groups[gid];
         STU.pendingGroupId = gid; STU.error='';
-        STU.step = (g && (g.members||[]).length>0) ? 'teamconfirm' : 'teaminput';
+        STU.step = 'teamconfirm';
         render();
       });
     });
+    document.getElementById('st-create-group-btn').addEventListener('click', ()=>{
+      STU.error=''; STU.step='teamcreate'; render();
+    });
     return;
   }
-  if(STU.step==='teaminput'){
-    document.getElementById('st-team-save').addEventListener('click', async ()=>{
+  if(STU.step==='teamcreate'){
+    document.getElementById('st-team-create-back').addEventListener('click', ()=>{ STU.step='pickgroup'; STU.error=''; render(); });
+    document.getElementById('st-team-create-submit').addEventListener('click', async ()=>{
+      const groupName = document.getElementById('st-team-name').value.trim();
       const myid = document.getElementById('st-team-myid').value.trim();
       const myname = document.getElementById('st-team-myname').value.trim();
       const rosterText = document.getElementById('st-team-roster').value;
+      if(!groupName){ STU.error='Please enter a group name.'; render(); return; }
       if(!myid || !myname){ STU.error='Please enter your own student ID and name.'; render(); return; }
       const members = rosterText.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
         const parts = l.split(/\s+/);
         return { sid: parts[0], name: parts.slice(1).join(' ') || '(no name)' };
       });
       if(!members.some(m=>m.sid===myid)) members.push({sid:myid, name:myname});
-      if(!members.length){ STU.error='Please list at least one group member.'; render(); return; }
-      const gid = STU.pendingGroupId;
-      let g = await sGet(`disc-group:${STU.code}:${gid}`);
-      g.members = members;
+      const gid = uid();
+      const g = { id:gid, name:groupName, members, opinion:'', presentWish:false };
       await sSet(`disc-group:${STU.code}:${gid}`, g);
       STU.groups[gid] = g;
       STU.sid = myid; STU.name = myname; STU.error='';
@@ -1310,30 +1375,38 @@ function bindStudent(){
   });
   const attachInput = document.getElementById('st-attach-file');
   if(attachInput) attachInput.addEventListener('change', async (e)=>{
-    const file = e.target.files[0];
+    const files = e.target.files;
     const statusEl = document.getElementById('st-attach-status');
-    if(!file) return;
-    if(file.size > 2*1024*1024){ statusEl.innerHTML = 'That file is over 2MB — please choose a smaller file.'; return; }
+    if(!files || !files.length) return;
     statusEl.textContent = 'Uploading…';
-    const reader = new FileReader();
-    reader.onload = async (ev)=>{
-      let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
-      g.attachment = { name:file.name, type:file.type, dataUrl: ev.target.result };
-      await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
-      STU.groups[STU.myGroupId] = g;
-      statusEl.innerHTML = `<span class="attach-row"><a class="attach-link" href="${g.attachment.dataUrl}" download="${escAttr(g.attachment.name)}">📎 ${esc(g.attachment.name)}</a><button class="secondary small" id="st-attach-remove">Remove</button></span>`;
-      document.getElementById('st-attach-remove').addEventListener('click', removeAttachment);
-    };
-    reader.readAsDataURL(file);
-  });
-  const removeBtn = document.getElementById('st-attach-remove');
-  if(removeBtn) removeBtn.addEventListener('click', removeAttachment);
-  async function removeAttachment(){
     let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
-    g.attachment = null;
+    const {accepted, errors} = await addFilesToAttachments(files, getAttachments(g));
+    g.attachments = accepted;
+    delete g.attachment;
     await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
     STU.groups[STU.myGroupId] = g;
-    document.getElementById('st-attach-status').textContent = 'No file attached.';
+    statusEl.innerHTML = attachEditorStatusHTML(accepted) + (errors.length ? `<div class="error-text">${errors.map(esc).join('<br>')}</div>` : '');
+    bindGroupAttachRemove(statusEl);
+    attachInput.value = '';
+  });
+  bindGroupAttachRemove(document.getElementById('st-attach-status'));
+  function bindGroupAttachRemove(container){
+    if(!container) return;
+    container.querySelectorAll('[data-attach-remove]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const idx = +btn.dataset.attachRemove;
+        let g = await sGet(`disc-group:${STU.code}:${STU.myGroupId}`);
+        const items = getAttachments(g);
+        items.splice(idx, 1);
+        g.attachments = items;
+        delete g.attachment;
+        await sSet(`disc-group:${STU.code}:${STU.myGroupId}`, g);
+        STU.groups[STU.myGroupId] = g;
+        const statusEl = document.getElementById('st-attach-status');
+        statusEl.innerHTML = attachEditorStatusHTML(items);
+        bindGroupAttachRemove(statusEl);
+      });
+    });
   }
   bindOthersLikeButtons(document.getElementById('st-others'));
   document.getElementById('st-refresh').addEventListener('click', refreshOthers);
@@ -1357,7 +1430,7 @@ async function refreshOthers(){
   await refreshStudentGroups();
   const el = document.getElementById('st-others');
   if(!el) return;
-  const others = (STU.session.groupIds||[]).map(gid=>STU.groups[gid]).filter(g=>g && g.id!==STU.myGroupId);
+  const others = Object.values(STU.groups).filter(g=>g && g.id!==STU.myGroupId);
   el.innerHTML = others.length? others.map(g=>otherGroupCard(g)).join('') : '<div class="empty">No other groups yet.</div>';
   bindOthersLikeButtons(el);
 }
@@ -1402,7 +1475,7 @@ async function loadIndividualLikes(){
 }
 async function enterIndividual(){
   let r = await sGet(`disc-indiv:${STU.code}:${STU.sid}`);
-  if(!r){ r = {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachment:null}; await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r); }
+  if(!r){ r = {sid:STU.sid, name:STU.name, opinion:'', presentWish:false, attachments:[]}; await sSet(`disc-indiv:${STU.code}:${STU.sid}`, r); }
   STU.individual = r;
   STU.opinionEditMode = undefined;
   await loadIndividualLikes();
@@ -1415,7 +1488,8 @@ async function enterIndividual(){
 
 async function loadGroupsForSession(){
   const groups = {};
-  for(const gid of (STU.session.groupIds||[])){ const g = await sGet(`disc-group:${STU.code}:${gid}`); if(g) groups[gid]=g; }
+  const gids = await groupIdsForSession(STU.session);
+  for(const gid of gids){ const g = await sGet(`disc-group:${STU.code}:${gid}`); if(g) groups[gid]=g; }
   STU.groups = groups;
 }
 async function enterGroup(gid){
@@ -1429,14 +1503,16 @@ async function persistStudentState(){
   await sSet(STU_KEY, { code:STU.code, sid:STU.sid, name:STU.name, myGroupId:STU.myGroupId }, false);
 }
 async function loadLikes(){
-  for(const gid of (STU.session.groupIds||[])){
+  const gids = await groupIdsForSession(STU.session);
+  for(const gid of gids){
     const v = await sGet(`disc-like:${STU.code}:${gid}:${STU.sid}`);
     STU.likes[gid] = !!v;
   }
 }
 async function refreshStudentGroups(){
   const groups = {};
-  for(const gid of (STU.session.groupIds||[])){
+  const gids = await groupIdsForSession(STU.session);
+  for(const gid of gids){
     const g = await sGet(`disc-group:${STU.code}:${gid}`);
     if(!g) continue;
     const likeKeys = await sList(`disc-like:${STU.code}:${gid}:`);
