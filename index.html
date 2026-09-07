@@ -180,6 +180,10 @@ function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
 function getAttachments(obj){
   if(!obj) return [];
   if(Array.isArray(obj.attachments)) return obj.attachments;
+  // Firebase sometimes hands back an array as a plain object (e.g. {"0":..., "1":...})
+  // instead of a real JS array. Without this, previously-saved attachments would look
+  // "missing" and get overwritten by the next upload.
+  if(obj.attachments && typeof obj.attachments === 'object') return Object.values(obj.attachments);
   if(obj.attachment) return [obj.attachment];
   return [];
 }
