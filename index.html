@@ -199,6 +199,12 @@ function attachmentLinksHTML(items){
   if(!items || !items.length) return '';
   return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a>`).join('')}</div>`;
 }
+// Same as attachmentLinksHTML but with a small × to let the instructor delete just the
+// heavy file (freeing storage) while keeping the text response intact.
+function attachmentLinksWithRemoveHTML(items, ownerType, ownerKey){
+  if(!items || !items.length) return '';
+  return `<div class="attach-row">${items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a><button class="secondary small" data-pp-remove-attach data-owner-type="${ownerType}" data-owner-key="${escAttr(ownerKey)}" data-idx="${i}" title="Remove this file">✕</button></span>`).join('')}</div>`;
+}
 function attachEditorStatusHTML(items){
   if(!items || !items.length) return 'No files attached.';
   return items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a><button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
@@ -959,9 +965,12 @@ function bindProfEdit(){
 }
 
 /* ================= PROFESSOR: PROGRESS ================= */
-function readingMaterialLink(session){
+function readingMaterialLink(session, removable){
   const items = getReadingMaterials(session);
   if(!items.length) return '';
+  if(removable){
+    return `<div style="margin:0 0 16px;">${attachmentLinksWithRemoveHTML(items, 'session', session.roomCode)}</div>`;
+  }
   const links = items.map(m=>`<a class="attach-link" href="${m.dataUrl}" download="${escAttr(m.name)}" target="_blank">📄 ${esc(m.name)}</a>`).join(' ');
   return `<p style="margin:0 0 16px;">${links}</p>`;
 }
@@ -971,14 +980,15 @@ function viewProfProgress(){
   <p class="page-eyebrow"><button class="link-btn" id="back-dash2">← Dashboard</button></p>
   <div><span class="tag">${esc(s.subject)}</span><span class="tag">Week ${s.week}</span></div>
   <h1 class="question-block" style="margin-top:8px;">${esc(s.question)}</h1>
-  ${readingMaterialLink(s)}
+  ${readingMaterialLink(s, true)}
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
     <p style="color:var(--charcoal-soft);font-size:14.5px;">Students enter this code on the <strong>Student</strong> screen.</p>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px;">
+  <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
     <button class="secondary" id="pp-refresh">Refresh</button>
+    <button class="danger" id="pp-clear-attachments">Clear all attached files (free up storage)</button>
   </div>
   <div id="pp-groups"><div class="empty">Click refresh to load group activity.</div></div>
   `;
@@ -986,7 +996,65 @@ function viewProfProgress(){
 function bindProfProgress(){
   document.getElementById('back-dash2').addEventListener('click', ()=>{ PROF_VIEW='course'; render(); });
   document.getElementById('pp-refresh').addEventListener('click', loadProfProgress);
+  bindProgressAttachRemove();
+  document.getElementById('pp-clear-attachments').addEventListener('click', async ()=>{
+    if(!confirm("Remove every attached file in this session (reading material and student attachments)? Text responses, likes, and hand-raised status stay. This can't be undone.")) return;
+    const s = PROF.activeSession;
+    if(s.groupMode === 'individual'){
+      const keys = await sList(`disc-indiv:${s.roomCode}:`);
+      for(const k of keys){
+        let r = await sGet(k);
+        if(r){ r.attachments = []; delete r.attachment; await sSet(k, r); }
+      }
+    } else {
+      const gids = await groupIdsForSession(s);
+      for(const gid of gids){
+        let g = await sGet(`disc-group:${s.roomCode}:${gid}`);
+        if(g){ g.attachments = []; delete g.attachment; await sSet(`disc-group:${s.roomCode}:${gid}`, g); }
+      }
+    }
+    s.readingMaterials = [];
+    delete s.readingMaterial;
+    await sSet(`disc-session:${s.roomCode}`, s);
+    render();
+  });
   loadProfProgress();
+}
+function bindProgressAttachRemove(){
+  document.querySelectorAll('[data-pp-remove-attach]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const type = btn.dataset.ownerType;
+      const key = btn.dataset.ownerKey;
+      const idx = +btn.dataset.idx;
+      if(type==='session'){
+        const s = PROF.activeSession;
+        const items = getReadingMaterials(s);
+        items.splice(idx,1);
+        s.readingMaterials = items;
+        delete s.readingMaterial;
+        await sSet(`disc-session:${s.roomCode}`, s);
+        render();
+        return;
+      }
+      const s = PROF.activeSession;
+      if(type==='group'){
+        let g = await sGet(`disc-group:${s.roomCode}:${key}`);
+        const items = getAttachments(g);
+        items.splice(idx,1);
+        g.attachments = items;
+        delete g.attachment;
+        await sSet(`disc-group:${s.roomCode}:${key}`, g);
+      } else {
+        let r = await sGet(`disc-indiv:${s.roomCode}:${key}`);
+        const items = getAttachments(r);
+        items.splice(idx,1);
+        r.attachments = items;
+        delete r.attachment;
+        await sSet(`disc-indiv:${s.roomCode}:${key}`, r);
+      }
+      loadProfProgress();
+    });
+  });
 }
 async function loadProfProgress(attempt=1){
   const s = PROF.activeSession;
@@ -1012,9 +1080,10 @@ async function loadProfProgress(attempt=1){
           ${r.presentWish ? '<span class="present-badge">✋ Hand raised</span>' : ''}
         </div>
         <div class="opinion">${r.opinion ? esc(r.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-        ${attachmentLinksHTML(getAttachments(r))}
+        ${attachmentLinksWithRemoveHTML(getAttachments(r), 'indiv', r.sid)}
         <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${r.likeCount} likes</span></div>
       </div>`).join('');
+    bindProgressAttachRemove();
     return;
   }
 
@@ -1045,9 +1114,10 @@ async function loadProfProgress(attempt=1){
       </div>
       <div class="members">${(g.members||[]).length? (g.members||[]).map(m=>`${esc(m.sid)} ${esc(m.name)}`).join(', ') : 'No members yet'}</div>
       <div class="opinion">${g.opinion ? esc(g.opinion) : '<span style="color:var(--charcoal-soft);font-style:italic;">No response yet</span>'}</div>
-      ${attachmentLinksHTML(getAttachments(g))}
+      ${attachmentLinksWithRemoveHTML(getAttachments(g), 'group', g.id)}
       <div class="meta-row"><span style="font-size:14.5px;color:var(--charcoal-soft);">${g.likeCount} likes</span></div>
     </div>`).join('');
+  bindProgressAttachRemove();
 }
 
 /* ================= STUDENT ================= */
