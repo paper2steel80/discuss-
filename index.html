@@ -64,7 +64,8 @@
   .present-check{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;margin-top:10px;}
   .present-toggle{background:#fff;color:var(--charcoal);border:1.5px solid var(--line);padding:9px 16px;font-size:16px;margin-top:10px;}
   .present-toggle.active{background:var(--mint-deep);border-color:var(--mint-deep);color:#fff;}
-  .attach-link{display:inline-flex;align-items:center;gap:6px;font-size:14.5px;color:var(--mint-deep);text-decoration:none;border:1px solid var(--line);padding:6px 12px;background:#F7FCFA;}
+  .attach-link{display:inline-flex;align-items:center;gap:6px;font-size:14.5px;color:var(--mint-deep);text-decoration:none;border:1px solid var(--line);padding:6px 12px;background:#F7FCFA;font-family:var(--sans);font-weight:500;cursor:pointer;}
+  .attach-link:hover{border-color:var(--mint-deep);background:#F7FCFA;}
   .attach-link:hover{border-color:var(--mint-deep);}
   .attach-row{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;}
   .join-hero{text-align:center;padding:20px 0 10px;}
@@ -96,6 +97,13 @@
 </head>
 <body>
 <div id="main"></div>
+<div id="file-preview-modal" style="display:none;position:fixed;inset:0;background:rgba(31,58,52,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;max-width:640px;width:100%;max-height:85vh;overflow:auto;padding:22px;position:relative;">
+    <button type="button" id="file-preview-close" class="secondary small" style="position:absolute;top:14px;right:14px;">✕ Close</button>
+    <h3 id="file-preview-title" style="font-family:var(--serif);font-size:18px;margin:0 30px 14px 0;color:var(--ink);"></h3>
+    <div id="file-preview-body"></div>
+  </div>
+</div>
 <script>
 /* ---------- Firebase setup ---------- */
 const firebaseConfig = {
@@ -210,19 +218,63 @@ function dataUrlToBlobUrl(dataUrl, type){
     return URL.createObjectURL(blob);
   }catch(e){ console.error('Blob conversion failed', e); return dataUrl; }
 }
+// Attachments are opened in an in-page preview modal instead of navigating anywhere — this
+// avoids the "new tab" restriction some LMS/in-app browsers impose, and lets a student open
+// several files one after another without losing their place on the page.
+let filePreviewRegistry = [];
+function registerPreview(item){
+  const idx = filePreviewRegistry.length;
+  filePreviewRegistry.push(item);
+  return idx;
+}
+function attachTriggerHTML(a){
+  const idx = registerPreview(a);
+  return `<button type="button" class="attach-link" data-preview-idx="${idx}">📎 ${esc(a.name)}</button>`;
+}
+function openFilePreview(item){
+  const modal = document.getElementById('file-preview-modal');
+  const body = document.getElementById('file-preview-body');
+  document.getElementById('file-preview-title').textContent = item.name;
+  let inner = '';
+  if(item.type && item.type.startsWith('image/')){
+    inner = `<img src="${item.dataUrl}" style="max-width:100%;max-height:65vh;display:block;margin:0 auto;">`;
+  } else if(item.type === 'application/pdf'){
+    inner = `<iframe src="${item.dataUrl}" style="width:100%;height:65vh;border:1px solid var(--line);"></iframe>`;
+  } else {
+    inner = `<p style="color:var(--charcoal-soft);padding:14px 0;">This file type can't be shown inline here — use Save below to open it in your device's own viewer.</p>`;
+  }
+  const blobUrl = dataUrlToBlobUrl(item.dataUrl, item.type);
+  inner += `<div style="text-align:center;margin-top:16px;"><a href="${blobUrl}" download="${escAttr(item.name)}">⬇ Save this file</a></div>`;
+  body.innerHTML = inner;
+  modal.style.display = 'flex';
+}
+function closeFilePreview(){
+  document.getElementById('file-preview-modal').style.display = 'none';
+  document.getElementById('file-preview-body').innerHTML = '';
+}
+document.getElementById('file-preview-close').addEventListener('click', closeFilePreview);
+document.getElementById('file-preview-modal').addEventListener('click', (e)=>{
+  if(e.target.id === 'file-preview-modal') closeFilePreview();
+});
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-preview-idx]');
+  if(!btn) return;
+  const item = filePreviewRegistry[+btn.dataset.previewIdx];
+  if(item) openFilePreview(item);
+});
 function attachmentLinksHTML(items){
   if(!items || !items.length) return '';
-  return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a>`).join('')}</div>`;
+  return `<div class="attach-row">${items.map(a=>attachTriggerHTML(a)).join('')}</div>`;
 }
 // Same as attachmentLinksHTML but with a small × to let the instructor delete just the
 // heavy file (freeing storage) while keeping the text response intact.
 function attachmentLinksWithRemoveHTML(items, ownerType, ownerKey){
   if(!items || !items.length) return '';
-  return `<div class="attach-row">${items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a><button class="secondary small" data-pp-remove-attach data-owner-type="${ownerType}" data-owner-key="${escAttr(ownerKey)}" data-idx="${i}" title="Remove this file">✕</button></span>`).join('')}</div>`;
+  return `<div class="attach-row">${items.map((a,i)=>`<span class="attach-row">${attachTriggerHTML(a)}<button class="secondary small" data-pp-remove-attach data-owner-type="${ownerType}" data-owner-key="${escAttr(ownerKey)}" data-idx="${i}" title="Remove this file">✕</button></span>`).join('')}</div>`;
 }
 function attachEditorStatusHTML(items){
   if(!items || !items.length) return 'No files attached.';
-  return items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a><button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
+  return items.map((a,i)=>`<span class="attach-row">${attachTriggerHTML(a)}<button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
 }
 function readFileAsDataURL(file){
   return new Promise((resolve,reject)=>{
@@ -986,7 +1038,7 @@ function readingMaterialLink(session, removable){
   if(removable){
     return `<div style="margin:0 0 16px;">${attachmentLinksWithRemoveHTML(items, 'session', session.roomCode)}</div>`;
   }
-  const links = items.map(m=>`<a class="attach-link" href="${dataUrlToBlobUrl(m.dataUrl, m.type)}" download="${escAttr(m.name)}" target="_blank" rel="noopener">📄 ${esc(m.name)}</a>`).join(' ');
+  const links = items.map(m=>`<a class="attach-link" href="${dataUrlToBlobUrl(m.dataUrl, m.type)}" download="${escAttr(m.name)}">📄 ${esc(m.name)}</a>`).join(' ');
   return `<p style="margin:0 0 16px;">${links}</p>`;
 }
 function viewProfProgress(){
