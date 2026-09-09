@@ -263,7 +263,7 @@ const PROF_PASSCODE = '5305';
 let profAuthenticated = false;
 let profAuthError = '';
 let PROF_VIEW = 'home';
-let PROF = { quizIndex:[], activeQuiz:null, activeQuizSession:null, editingQuizId:null, editingQuizData:null, wcIndex:[], activeWC:null, builder:null };
+let PROF = { quizIndex:[], activeQuiz:null, activeQuizSession:null, editingQuizId:null, editingQuizData:null, viewingQuizSubject:null, quizWeekOpen:new Set(), quizPrefill:null, wcIndex:[], activeWC:null, builder:null };
 let STU = { step:'code', code:null, sid:null, name:null, error:'', session:null, kind:null,
             quizAnswers:{}, quizIdx:0, quizSelected:null, quizPollHandle:null,
             wcWords:[] };
@@ -275,7 +275,8 @@ function render(){
   if(ROLE==='prof'){
     let inner;
     if(PROF_VIEW==='home') inner = viewProfHome();
-    else if(PROF_VIEW==='quiz-list') inner = viewQuizList();
+    else if(PROF_VIEW==='quiz-home') inner = viewQuizHome();
+    else if(PROF_VIEW==='quiz-course') inner = viewQuizCourse();
     else if(PROF_VIEW==='quiz-create') inner = viewQuizCreate();
     else if(PROF_VIEW==='quiz-run-live') inner = viewQuizRunLive();
     else if(PROF_VIEW==='quiz-run-selfpaced') inner = viewQuizRunSelfpaced();
@@ -285,7 +286,8 @@ function render(){
     else if(PROF_VIEW==='stopwatch') inner = viewStopwatch();
     main.innerHTML = '<p style="margin-bottom:14px;"><button class="link-btn" id="role-switch">← Switch role (Instructor / Student)</button></p>' + inner;
     if(PROF_VIEW==='home') bindProfHome();
-    else if(PROF_VIEW==='quiz-list') bindQuizList();
+    else if(PROF_VIEW==='quiz-home') bindQuizHome();
+    else if(PROF_VIEW==='quiz-course') bindQuizCourse();
     else if(PROF_VIEW==='quiz-create') bindQuizCreate();
     else if(PROF_VIEW==='quiz-run-live') bindQuizRunLive();
     else if(PROF_VIEW==='quiz-run-selfpaced') bindQuizRunSelfpaced();
@@ -367,39 +369,115 @@ function viewProfHome(){
 function bindProfHome(){
   document.querySelectorAll('[data-tool]').forEach(el=>el.addEventListener('click', async ()=>{
     const tool = el.dataset.tool;
-    if(tool==='quiz'){ PROF.quizIndex = await sGet('quiz-set-index', false) || []; PROF_VIEW='quiz-list'; }
+    if(tool==='quiz'){ PROF.quizIndex = await sGet('quiz-set-index', false) || []; PROF_VIEW='quiz-home'; }
     else if(tool==='wc'){ PROF.wcIndex = await sGet('wc-index', false) || []; PROF_VIEW='wc-list'; }
     else if(tool==='stopwatch'){ PROF_VIEW='stopwatch'; }
     render();
   }));
 }
 
-/* ================= QUIZ: LIST ================= */
-function viewQuizList(){
+/* ================= QUIZ: COURSE DASHBOARD ================= */
+function groupQuizIndexByCourse(){
+  const byCourse = {};
+  PROF.quizIndex.forEach(q=>{
+    const c = q.subject || 'Untitled course';
+    if(!byCourse[c]) byCourse[c] = {};
+    const w = q.week || 1;
+    if(!byCourse[c][w]) byCourse[c][w] = [];
+    byCourse[c][w].push(q);
+  });
+  return byCourse;
+}
+function viewQuizHome(){
+  const byCourse = groupQuizIndexByCourse();
+  const courseNames = Object.keys(byCourse).sort();
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-home">← Class Tools</button></p>
   <h1 class="page-title">Quiz</h1>
-  <button class="brass" id="quiz-new">+ New quiz</button>
-  <p style="font-size:13.5px;color:var(--charcoal-soft);margin:10px 0 0;">
-    <strong>Live</strong> — everyone sees the same question at the same time; you control when to move on, optionally with a countdown per question.
-    <strong>Self-paced</strong> — each student works through all questions on their own, in their own time; good for homework-style checks.
-  </p>
-  <div class="card" style="margin-top:16px;">
-    ${PROF.quizIndex.length ? PROF.quizIndex.map(q=>`
-      <div class="list-row">
-        <div><div class="title">${esc(q.title)}</div><div class="meta">${q.questionCount} question${q.questionCount!==1?'s':''}</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="brass small" data-start-live="${q.id}">Start Live</button>
-          <button class="secondary small" data-start-self="${q.id}">Start Self-paced</button>
-          <button class="secondary small" data-edit-quiz="${q.id}">Edit</button>
-          <button class="danger small" data-del-quiz="${q.id}">Delete</button>
-        </div>
-      </div>`).join('') : '<div class="empty">No saved quizzes yet.</div>'}
+  <div class="card">
+    <label>Open a course</label>
+    <div class="row" style="max-width:340px;">
+      <input type="text" id="qz-open-course" list="qz-course-list" placeholder="e.g. Business English 101">
+      <datalist id="qz-course-list">${courseNames.map(c=>`<option value="${escAttr(c)}">`).join('')}</datalist>
+      <button class="brass" id="qz-open-course-btn" style="flex:0 0 auto;">Open</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--charcoal-soft);margin:8px 0 0;">Type an existing course to open it, or a new one to start it. Quizzes are created from inside a course, grouped by week.</p>
+  </div>
+  <hr class="hairline">
+  <div class="menu-grid">
+    ${courseNames.length ? courseNames.map(c=>{
+      const total = Object.values(byCourse[c]).reduce((a,arr)=>a+arr.length,0);
+      return `<div class="menu-tile" data-course="${escAttr(c)}" style="text-align:left;padding:16px;"><span class="name" style="font-size:16px;">${esc(c)}</span><div class="meta" style="margin-top:4px;">${total} quiz${total!==1?'zes':''}</div></div>`;
+    }).join('') : '<div class="empty">No courses yet. Open one above.</div>'}
   </div>`;
 }
-function bindQuizList(){
+function bindQuizHome(){
   document.getElementById('back-home').addEventListener('click', ()=>{ PROF_VIEW='home'; render(); });
-  document.getElementById('quiz-new').addEventListener('click', ()=>{ PROF.editingQuizId=null; PROF_VIEW='quiz-create'; render(); });
+  document.querySelectorAll('[data-course]').forEach(el=>el.addEventListener('click', ()=>{
+    PROF.viewingQuizSubject = el.dataset.course;
+    PROF.quizWeekOpen = new Set();
+    PROF_VIEW='quiz-course'; render();
+  }));
+  document.getElementById('qz-open-course-btn').addEventListener('click', ()=>{
+    const name = document.getElementById('qz-open-course').value.trim();
+    if(!name) return;
+    PROF.viewingQuizSubject = name;
+    PROF.quizWeekOpen = new Set();
+    PROF_VIEW='quiz-course'; render();
+  });
+}
+
+/* ================= QUIZ: COURSE DETAIL (weeks + quizzes) ================= */
+function viewQuizCourse(){
+  const course = PROF.viewingQuizSubject;
+  const byCourse = groupQuizIndexByCourse();
+  const weeks = byCourse[course] || {};
+  const weekNums = Object.keys(weeks).map(Number).sort((a,b)=>a-b);
+  const maxWeek = weekNums.length ? Math.max(...weekNums) : 0;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-quizhome">← Quiz</button></p>
+  <h1 class="page-title">${esc(course)}</h1>
+  <button class="brass" id="quiz-new" data-nextweek="${maxWeek+1}">+ New quiz in ${esc(course)}</button>
+  <p style="font-size:13.5px;color:var(--charcoal-soft);margin:10px 0 0;">
+    <strong>Live</strong> — everyone sees the same question at the same time; you control pacing, optionally with a countdown.
+    <strong>Self-paced</strong> — each student works through it independently, and can retry.
+  </p>
+  <div class="card" style="margin-top:16px;">
+    ${weekNums.length ? weekNums.map(w=>{
+      const wkKey = course+'|'+w;
+      const wkOpen = PROF.quizWeekOpen.has(wkKey);
+      return `
+      <div class="week-block">
+        <div class="week-label" data-week-toggle="${escAttr(wkKey)}" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+          <span>Week ${w} · ${weeks[w].length} quiz${weeks[w].length!==1?'zes':''}</span>
+          <span class="chevron">${wkOpen?'▾':'▸'}</span>
+        </div>
+        ${wkOpen ? weeks[w].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(q=>`
+          <div class="list-row">
+            <div><div class="title">${esc(q.title)}</div><div class="meta">${q.questionCount} question${q.questionCount!==1?'s':''}</div></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="brass small" data-start-live="${q.id}">Start Live</button>
+              <button class="secondary small" data-start-self="${q.id}">Start Self-paced</button>
+              <button class="secondary small" data-edit-quiz="${q.id}">Edit</button>
+              <button class="danger small" data-del-quiz="${q.id}">Delete</button>
+            </div>
+          </div>`).join('') : ''}
+      </div>`;
+    }).join('') : '<div class="empty">No quizzes in this course yet.</div>'}
+  </div>`;
+}
+function bindQuizCourse(){
+  document.getElementById('back-quizhome').addEventListener('click', ()=>{ PROF_VIEW='quiz-home'; render(); });
+  document.getElementById('quiz-new').addEventListener('click', (ev)=>{
+    PROF.quizPrefill = { subject: PROF.viewingQuizSubject, week: +ev.currentTarget.dataset.nextweek };
+    PROF.editingQuizId=null; PROF.editingQuizData=null;
+    PROF_VIEW='quiz-create'; render();
+  });
+  document.querySelectorAll('[data-week-toggle]').forEach(el=>el.addEventListener('click', ()=>{
+    const key = el.dataset.weekToggle;
+    if(PROF.quizWeekOpen.has(key)) PROF.quizWeekOpen.delete(key); else PROF.quizWeekOpen.add(key);
+    render();
+  }));
   document.querySelectorAll('[data-start-live]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startLive, 'live')));
   document.querySelectorAll('[data-start-self]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startSelf, 'selfpaced')));
   document.querySelectorAll('[data-edit-quiz]').forEach(b=>b.addEventListener('click', async ()=>{
@@ -452,9 +530,19 @@ function blankQuestion(type){
   return {type:'mcq', text:'', options:['',''], correct:0};
 }
 function viewQuizCreate(){
+  const idxEntry = PROF.editingQuizId ? PROF.quizIndex.find(q=>q.id===PROF.editingQuizId) : null;
+  const prefillSubject = idxEntry ? idxEntry.subject : (PROF.quizPrefill ? PROF.quizPrefill.subject : '');
+  const prefillWeek = idxEntry ? idxEntry.week : (PROF.quizPrefill ? PROF.quizPrefill.week : 1);
+  const subjects = [...new Set(PROF.quizIndex.map(q=>q.subject).filter(Boolean))];
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-quizlist">← Quiz</button></p>
   <h1 class="page-title">${PROF.editingQuizId ? 'Edit quiz' : 'New quiz'}</h1>
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Course</label><input type="text" id="qz-subject" list="qz-subject-list" placeholder="e.g. Business English 101" value="${escAttr(prefillSubject)}"><datalist id="qz-subject-list">${subjects.map(s=>`<option value="${escAttr(s)}">`).join('')}</datalist></div>
+      <div class="field" style="max-width:120px;"><label>Week</label><input type="number" id="qz-week" value="${prefillWeek}" min="1"></div>
+    </div>
+  </div>
   <div class="card">
     <label>Upload questions from Excel (optional)</label>
     <div class="file-drop">
@@ -549,7 +637,7 @@ function renderQzQuestions(){
   });
 }
 function bindQuizCreate(){
-  document.getElementById('back-quizlist').addEventListener('click', ()=>{ PROF.editingQuizId=null; PROF.editingQuizData=null; PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('back-quizlist').addEventListener('click', ()=>{ PROF.editingQuizId=null; PROF.editingQuizData=null; PROF_VIEW='quiz-course'; render(); });
   qzQuestions = PROF.editingQuizId ? JSON.parse(JSON.stringify(PROF.editingQuizData.questions)) : [blankQuestion('mcq')];
   renderQzQuestions();
   document.querySelectorAll('[data-add-type]').forEach(tab=>tab.addEventListener('click', ()=>{
@@ -603,6 +691,8 @@ function bindQuizCreate(){
   });
   document.getElementById('qz-save').addEventListener('click', async ()=>{
     document.querySelectorAll('#qz-questions [data-qidx]').forEach(card=>syncQuestionFromCard(card, +card.dataset.qidx));
+    const subject = document.getElementById('qz-subject').value.trim() || 'Untitled course';
+    const week = Math.max(1, +document.getElementById('qz-week').value || 1);
     const title = document.getElementById('qz-title').value.trim() || 'Untitled quiz';
     const valid = qzQuestions.filter(q=>{
       if(!q.text.trim()) return false;
@@ -616,13 +706,14 @@ function bindQuizCreate(){
     await sSet(`quiz-set:${qid}`, {id:qid, title, questions:valid}, false);
     if(PROF.editingQuizId){
       const idx = PROF.quizIndex.find(q=>q.id===qid);
-      if(idx){ idx.title = title; idx.questionCount = valid.length; }
+      if(idx){ idx.title = title; idx.questionCount = valid.length; idx.subject = subject; idx.week = week; }
     } else {
-      PROF.quizIndex.push({id:qid, title, questionCount:valid.length});
+      PROF.quizIndex.push({id:qid, title, questionCount:valid.length, subject, week, createdAt:Date.now()});
     }
     await sSet('quiz-set-index', PROF.quizIndex, false);
-    PROF.editingQuizId = null; PROF.editingQuizData = null;
-    PROF_VIEW='quiz-list'; render();
+    PROF.editingQuizId = null; PROF.editingQuizData = null; PROF.quizPrefill = null;
+    PROF.viewingQuizSubject = subject;
+    PROF_VIEW='quiz-course'; render();
   });
 }
 
@@ -645,7 +736,7 @@ function viewQuizRunLive(){
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
-    ${s.timerSeconds>0 ? `<div id="qz-timer" style="font-family:var(--serif);font-size:28px;color:var(--mint-deep);margin-top:8px;"></div>` : ''}
+    ${s.timerSeconds>0 ? `<div id="qz-timer" style="font-family:var(--serif);font-size:28px;color:var(--mint-deep);margin-top:8px;">${!s.questionEndsAt ? "⏱ Time's up" : ''}</div>` : ''}
   </div>
   <div class="card">
     <div class="meta" style="color:var(--charcoal-soft);font-size:13.5px;margin-bottom:8px;">Question ${s.currentIndex+1} / ${s.questions.length} <span class="tag">${q.type.toUpperCase()}</span></div>
@@ -668,22 +759,42 @@ function tickProfTimer(){
   const el = document.getElementById('qz-timer');
   if(!el || !s || !s.questionEndsAt) return;
   const left = Math.max(0, Math.ceil((s.questionEndsAt-Date.now())/1000));
-  el.textContent = left>0 ? `⏱ ${left}s` : "⏱ Time's up";
+  el.textContent = left>0 ? `⏱ ${left}s` : "⏱ Time's up — moving on…";
+  if(left===0){
+    clearInterval(qzProfTimerHandle);
+    advanceLiveQuestion();
+  }
 }
 function resetQuizTimer(){
   const s = PROF.activeQuizSession;
   s.questionEndsAt = s.timerSeconds>0 ? Date.now()+s.timerSeconds*1000 : null;
 }
 async function persistQuizSession(){ await sSet(`quiz-session:${PROF.activeQuizSession.roomCode}`, PROF.activeQuizSession); }
+// Used by both the "Next" button and the timer running out, so behavior stays identical either way.
+function advanceLiveQuestion(){
+  const s = PROF.activeQuizSession;
+  if(s.currentIndex < s.questions.length-1){
+    s.currentIndex++;
+    s.revealed = false;
+    resetQuizTimer();
+    persistQuizSession();
+  } else {
+    // last question — nothing further to advance to; clear the deadline so the timer
+    // doesn't keep re-firing on every re-render.
+    s.questionEndsAt = null;
+    persistQuizSession();
+  }
+  render();
+}
 function bindQuizRunLive(){
   clearInterval(qzProfTimerHandle);
   if(PROF.activeQuizSession.timerSeconds>0){ tickProfTimer(); qzProfTimerHandle = setInterval(tickProfTimer, 1000); }
-  document.getElementById('back-quizlist2').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-list'; render(); });
-  document.getElementById('qz-prev').addEventListener('click', ()=>{ PROF.activeQuizSession.currentIndex--; PROF.activeQuizSession.revealed=false; resetQuizTimer(); persistQuizSession(); render(); });
-  document.getElementById('qz-next').addEventListener('click', ()=>{ PROF.activeQuizSession.currentIndex++; PROF.activeQuizSession.revealed=false; resetQuizTimer(); persistQuizSession(); render(); });
+  document.getElementById('back-quizlist2').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-course'; render(); });
+  document.getElementById('qz-prev').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF.activeQuizSession.currentIndex--; PROF.activeQuizSession.revealed=false; resetQuizTimer(); persistQuizSession(); render(); });
+  document.getElementById('qz-next').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); advanceLiveQuestion(); });
   document.getElementById('qz-reveal').addEventListener('click', ()=>{ PROF.activeQuizSession.revealed=!PROF.activeQuizSession.revealed; persistQuizSession(); render(); });
   document.getElementById('qz-preview').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); previewAsStudent('quiz', PROF.activeQuizSession); });
-  document.getElementById('qz-end').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('qz-end').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-course'; render(); });
   document.getElementById('qz-refresh').addEventListener('click', loadQuizLiveResults);
 }
 async function loadQuizLiveResults(){
@@ -738,8 +849,8 @@ function viewQuizRunSelfpaced(){
   <div id="qzsp-students" style="margin-top:16px;"><div class="empty">Click refresh to load student progress.</div></div>`;
 }
 function bindQuizRunSelfpaced(){
-  document.getElementById('back-quizlist3').addEventListener('click', ()=>{ PROF_VIEW='quiz-list'; render(); });
-  document.getElementById('qzsp-end').addEventListener('click', ()=>{ PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('back-quizlist3').addEventListener('click', ()=>{ PROF_VIEW='quiz-course'; render(); });
+  document.getElementById('qzsp-end').addEventListener('click', ()=>{ PROF_VIEW='quiz-course'; render(); });
   document.getElementById('qzsp-preview').addEventListener('click', ()=>{ previewAsStudent('quiz', PROF.activeQuizSession); });
   document.getElementById('qzsp-refresh').addEventListener('click', loadQuizSelfpacedProgress);
   document.getElementById('qzsp-export').addEventListener('click', exportQuizScores);
