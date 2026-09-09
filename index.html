@@ -195,19 +195,34 @@ function getReadingMaterials(session){
   if(session.readingMaterial) return [session.readingMaterial];
   return [];
 }
+// iOS Safari (and some other mobile browsers) largely ignore the `download` attribute on a
+// plain data: URL — tapping the link does nothing useful. Converting to a real Blob URL and
+// opening it in a new tab is far more reliable: the phone's own PDF/image viewer takes over,
+// and from there the user has a normal Share/Save option.
+function dataUrlToBlobUrl(dataUrl, type){
+  try{
+    const commaIdx = dataUrl.indexOf(',');
+    const base64 = dataUrl.slice(commaIdx+1);
+    const byteChars = atob(base64);
+    const byteNumbers = new Array(byteChars.length);
+    for(let i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([new Uint8Array(byteNumbers)], {type: type || 'application/octet-stream'});
+    return URL.createObjectURL(blob);
+  }catch(e){ console.error('Blob conversion failed', e); return dataUrl; }
+}
 function attachmentLinksHTML(items){
   if(!items || !items.length) return '';
-  return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a>`).join('')}</div>`;
+  return `<div class="attach-row">${items.map(a=>`<a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a>`).join('')}</div>`;
 }
 // Same as attachmentLinksHTML but with a small × to let the instructor delete just the
 // heavy file (freeing storage) while keeping the text response intact.
 function attachmentLinksWithRemoveHTML(items, ownerType, ownerKey){
   if(!items || !items.length) return '';
-  return `<div class="attach-row">${items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a><button class="secondary small" data-pp-remove-attach data-owner-type="${ownerType}" data-owner-key="${escAttr(ownerKey)}" data-idx="${i}" title="Remove this file">✕</button></span>`).join('')}</div>`;
+  return `<div class="attach-row">${items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a><button class="secondary small" data-pp-remove-attach data-owner-type="${ownerType}" data-owner-key="${escAttr(ownerKey)}" data-idx="${i}" title="Remove this file">✕</button></span>`).join('')}</div>`;
 }
 function attachEditorStatusHTML(items){
   if(!items || !items.length) return 'No files attached.';
-  return items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${a.dataUrl}" download="${escAttr(a.name)}">📎 ${esc(a.name)}</a><button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
+  return items.map((a,i)=>`<span class="attach-row"><a class="attach-link" href="${dataUrlToBlobUrl(a.dataUrl, a.type)}" download="${escAttr(a.name)}" target="_blank" rel="noopener">📎 ${esc(a.name)}</a><button class="secondary small" data-attach-remove="${i}">Remove</button></span>`).join('');
 }
 function readFileAsDataURL(file){
   return new Promise((resolve,reject)=>{
@@ -971,7 +986,7 @@ function readingMaterialLink(session, removable){
   if(removable){
     return `<div style="margin:0 0 16px;">${attachmentLinksWithRemoveHTML(items, 'session', session.roomCode)}</div>`;
   }
-  const links = items.map(m=>`<a class="attach-link" href="${m.dataUrl}" download="${escAttr(m.name)}" target="_blank">📄 ${esc(m.name)}</a>`).join(' ');
+  const links = items.map(m=>`<a class="attach-link" href="${dataUrlToBlobUrl(m.dataUrl, m.type)}" download="${escAttr(m.name)}" target="_blank" rel="noopener">📄 ${esc(m.name)}</a>`).join(' ');
   return `<p style="margin:0 0 16px;">${links}</p>`;
 }
 function viewProfProgress(){
