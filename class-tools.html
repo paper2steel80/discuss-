@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Class Tools — Quiz, Word Cloud, Stopwatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#EAF6F1; --paper:#FFFFFF; --mint:#4FA98C; --mint-deep:#2F7D63; --mint-pale:#DCF2E9;
+    --ink:#1F3A34; --charcoal:#233129; --charcoal-soft:#5b6f66; --line:#CFEAE0; --brick:#B14B4B;
+    --serif:'Newsreader',Georgia,serif; --sans:'Inter',-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--bg);color:var(--charcoal);-webkit-font-smoothing:antialiased;}
+  #main{max-width:780px;margin:0 auto;padding:40px 24px 80px;}
+  .page-eyebrow{font-family:var(--serif);font-style:italic;color:var(--charcoal-soft);font-size:15px;margin:0 0 4px;}
+  h1.page-title{font-family:var(--serif);font-weight:600;font-size:34px;margin:0 0 8px;color:var(--ink);line-height:1.3;}
+  .question-block{font-family:var(--serif);font-weight:600;font-size:20px;line-height:1.55;color:var(--ink);white-space:pre-wrap;margin:0 0 8px;}
+  .page-desc{font-size:16px;color:var(--charcoal-soft);line-height:1.6;margin:0 0 26px;max-width:62ch;}
+  .card{background:var(--paper);border:1px solid var(--line);padding:22px 24px;margin-bottom:18px;}
+  .card h3{font-family:var(--serif);font-size:19px;margin:0 0 12px;color:var(--ink);font-weight:600;}
+  .hairline{border:none;border-top:1px solid var(--line);margin:20px 0;}
+  button{font-family:var(--sans);cursor:pointer;border:1px solid var(--mint-deep);background:var(--mint-deep);color:#fff;padding:9px 18px;font-size:14.5px;font-weight:600;}
+  button:hover{background:var(--ink);border-color:var(--ink);}
+  button.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  button.secondary:hover{border-color:var(--mint-deep);background:var(--mint-pale);}
+  button.brass{background:var(--mint);border-color:var(--mint);}
+  button.brass:hover{background:var(--mint-deep);}
+  button.danger{background:transparent;color:var(--brick);border:1px solid var(--brick);}
+  button.danger:hover{background:rgba(177,75,75,.08);}
+  button.small{padding:5px 10px;font-size:13px;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  input[type=text],input[type=number],textarea,select{font-family:var(--sans);font-size:15px;padding:9px 11px;border:1px solid var(--line);background:#F7FCFA;color:var(--charcoal);width:100%;}
+  textarea{resize:vertical;min-height:70px;}
+  label{display:block;font-size:13.5px;font-weight:600;color:var(--charcoal-soft);margin:0 0 5px;}
+  .field{margin-bottom:14px;}
+  .row{display:flex;gap:10px;}
+  .row>*{flex:1;}
+  .roomcode{font-family:var(--serif);font-size:44px;font-weight:600;color:var(--mint-deep);letter-spacing:.06em;text-align:center;}
+  .tag{display:inline-block;font-size:12.5px;padding:3px 9px;background:var(--mint-pale);border:1px solid var(--line);color:var(--charcoal-soft);margin-right:6px;}
+  .empty{color:var(--charcoal-soft);font-size:15px;padding:16px 0;text-align:center;font-style:italic;}
+  .join-hero{text-align:center;padding:20px 0 10px;}
+  .roomcode-input{font-family:var(--serif);font-size:30px;text-align:center;letter-spacing:.15em;padding:12px;}
+  .error-text{color:var(--brick);font-size:14px;margin-top:8px;}
+  .link-btn{background:none;border:none;color:var(--mint-deep);font-weight:600;padding:0;text-decoration:underline;cursor:pointer;}
+  .link-btn:hover{background:none;color:var(--ink);}
+
+  .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;}
+  .menu-tile{border:1.5px solid var(--line);background:#fff;padding:26px 18px;text-align:center;cursor:pointer;}
+  .menu-tile:hover{border-color:var(--mint);background:var(--mint-pale);}
+  .menu-tile .icon{font-size:34px;margin-bottom:10px;display:block;}
+  .menu-tile .name{font-family:var(--serif);font-size:18px;color:var(--ink);font-weight:600;}
+
+  .list-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);}
+  .list-row:last-child{border-bottom:none;}
+  .list-row .title{font-family:var(--serif);font-size:16.5px;color:var(--ink);}
+  .list-row .meta{font-size:12.5px;color:var(--charcoal-soft);margin-top:2px;}
+
+  .radio-group{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+  .radio-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:12px 14px;cursor:pointer;}
+  .radio-opt.active{border-color:var(--mint);background:var(--mint-pale);}
+  .radio-opt input{margin-top:3px;}
+  .radio-opt .rt{font-weight:600;font-size:14.5px;}
+  .radio-opt .rd{font-size:13px;color:var(--charcoal-soft);margin-top:2px;}
+
+  .choice-btn{display:block;width:100%;text-align:left;padding:16px 18px;margin-bottom:10px;background:#fff;border:1.5px solid var(--line);color:var(--charcoal);font-size:16px;font-weight:500;}
+  .choice-btn:hover{border-color:var(--mint);}
+  .choice-btn.correct{border-color:var(--mint-deep);background:rgba(47,125,99,.08);color:var(--mint-deep);}
+  .choice-btn.wrong-selected{border-color:var(--brick);background:rgba(177,75,75,.06);}
+  .choice-btn.selected{border-color:var(--mint);background:rgba(79,169,140,.1);}
+  .choice-btn:disabled{cursor:default;}
+
+  .bar-row{margin-bottom:12px;}
+  .bar-label{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;}
+  .bar-track{background:var(--bg);border:1px solid var(--line);height:22px;position:relative;}
+  .bar-fill{background:var(--mint-deep);height:100%;transition:width .3s;}
+
+  .timer-display{font-family:var(--serif);font-size:76px;color:var(--ink);text-align:center;margin:24px 0;font-variant-numeric:tabular-nums;}
+  .timer-display.alert{color:var(--brick);}
+
+  .wc-cloud{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:baseline;justify-content:center;padding:20px 10px;min-height:120px;}
+  .wc-word{display:inline-block;font-family:var(--serif);font-weight:600;color:var(--mint-deep);white-space:nowrap;}
+
+  .qbuild-card{background:var(--bg);border:1px solid var(--line);padding:16px;margin-bottom:12px;}
+  .word-chip{display:inline-flex;align-items:center;gap:6px;background:var(--mint-pale);border:1px solid var(--line);padding:5px 10px;margin:0 6px 6px 0;font-size:14px;}
+  .word-chip button{padding:0 4px;background:none;border:none;color:var(--brick);font-weight:700;}
+  .word-chip button:hover{background:none;}
+
+  .type-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .type-tab{padding:6px 12px;border:1px solid var(--line);background:#fff;font-size:13px;cursor:pointer;color:var(--charcoal-soft);}
+  .type-tab.active{border-color:var(--mint-deep);background:var(--mint-deep);color:#fff;}
+  .order-item-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .order-item-row .idx{font-family:var(--serif);color:var(--mint-deep);width:20px;flex:0 0 auto;}
+  .file-drop{border:1.5px dashed var(--line);padding:18px;text-align:center;font-size:15px;color:var(--charcoal-soft);background:var(--mint-pale);}
+  .order-pick-btn{display:inline-block;padding:12px 16px;margin:0 8px 8px 0;background:#fff;border:1.5px solid var(--line);font-size:15px;cursor:pointer;}
+  .order-pick-btn:hover{border-color:var(--mint);}
+  .order-pick-btn.used{opacity:.35;pointer-events:none;}
+  .order-slot{display:inline-flex;align-items:center;justify-content:center;min-width:110px;padding:10px 14px;margin:0 6px 8px 0;border:1.5px solid var(--line);background:var(--bg);font-size:15px;}
+  .order-slot.correct{border-color:var(--mint-deep);background:rgba(47,125,99,.08);}
+  .order-slot.wrong{border-color:var(--brick);background:rgba(177,75,75,.06);}
+</style>
+</head>
+<body>
+<div id="main"></div>
+<script>
+/* ---------- Firebase setup ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDyVoo-nIK0d8U0iEBpQ2fVT6o-mR4Al10",
+  authDomain: "class-5e531.firebaseapp.com",
+  databaseURL: "https://class-5e531-default-rtdb.firebaseio.com",
+  projectId: "class-5e531",
+  storageBucket: "class-5e531.firebasestorage.app",
+  messagingSenderId: "251178040005",
+  appId: "1:251178040005:web:c8d0d9f6ab1a9632798eac"
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb = firebase.database();
+const authReady = new Promise((resolve)=>{
+  fbAuth.onAuthStateChanged(user=>{ if(user) resolve(user.uid); });
+  fbAuth.signInAnonymously().catch(err=>console.error('Anonymous sign-in failed', err));
+});
+
+/* ---------- storage helpers ---------- */
+function keyToPath(key, shared, uid){
+  const cleanKey = String(key).split(':').join('/');
+  return shared ? `shared/${cleanKey}` : `users/${uid}/${cleanKey}`;
+}
+async function sGet(key, shared=true){
+  try{
+    const uid = await authReady;
+    const snap = await fbDb.ref(keyToPath(key, shared, uid)).once('value');
+    const v = snap.val();
+    return (v===null || v===undefined) ? null : v;
+  }catch(e){ console.error('sGet error', key, e); return null; }
+}
+async function sSet(key, val, shared=true){
+  try{
+    const uid = await authReady;
+    await fbDb.ref(keyToPath(key, shared, uid)).set(val);
+    return true;
+  }catch(e){ console.error('sSet error', key, e); return false; }
+}
+async function sDel(key, shared=true){
+  try{
+    const uid = await authReady;
+    await fbDb.ref(keyToPath(key, shared, uid)).remove();
+    return true;
+  }catch(e){ console.error('sDel error', key, e); return false; }
+}
+async function sList(prefix, shared=true){
+  try{
+    const uid = await authReady;
+    const trimmed = prefix.endsWith(':') ? prefix.slice(0, -1) : prefix;
+    const snap = await fbDb.ref(keyToPath(trimmed, shared, uid)).once('value');
+    const val = snap.val();
+    if(!val || typeof val !== 'object') return [];
+    return Object.keys(val).map(childKey => prefix + childKey);
+  }catch(e){ console.error('sList error', prefix, e); return []; }
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function roomCode(){ return String(Math.floor(1000+Math.random()*9000)); }
+function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+function shuffleArray(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+// Lets the instructor quickly see the student join screen for the session they just started,
+// without needing a second device — jumps straight past the room-code step since we already
+// know it. Switches this same browser tab into Student mode (not a live side-by-side view).
+function previewAsStudent(kind, session){
+  clearInterval(STU.quizPollHandle);
+  // Use a local copy so the preview never touches the real shared session — and give any
+  // live timer a fresh full countdown, since time already passed while getting to this screen.
+  const sessionCopy = JSON.parse(JSON.stringify(session));
+  if(kind==='quiz' && sessionCopy.mode==='live' && sessionCopy.timerSeconds>0){
+    sessionCopy.questionEndsAt = Date.now() + sessionCopy.timerSeconds*1000;
+  }
+  STU = { step:'id', code:sessionCopy.roomCode, sid:null, name:null, error:'', session:sessionCopy, kind,
+          quizAnswers:{}, quizIdx:0, quizSelected:null, quizPollHandle:null, wcWords:[], isPreview:true };
+  ROLE = 'student';
+  render();
+}
+function pickFiles(multiple=true){
+  return new Promise((resolve)=>{
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = multiple;
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    document.body.appendChild(input);
+    input.addEventListener('change', ()=>{
+      resolve(input.files);
+      document.body.removeChild(input);
+    }, {once:true});
+    input.click();
+  });
+}
+function normalizeAnswer(s){ return String(s==null?'':s).trim().toLowerCase(); }
+// A question's "type" governs how it's answered and graded:
+//  ox / mcq  -> options[] + correct (index) — OX is just a fixed 2-option MCQ
+//  short     -> answer (string), graded by exact match ignoring case/whitespace
+//  order     -> items[] (already in correct order), graded by exact sequence match
+function isCorrectAnswer(q, ans){
+  if(q.type==='short') return normalizeAnswer(ans) === normalizeAnswer(q.answer);
+  if(q.type==='order'){
+    if(!Array.isArray(ans) || ans.length !== q.items.length) return false;
+    return ans.every((v,i)=> normalizeAnswer(v)===normalizeAnswer(q.items[i]));
+  }
+  return ans === q.correct; // ox / mcq / legacy (no type)
+}
+// Parses the single-sheet Excel format:
+// Type | Question | Option1..Option6 | Answer
+//  OX    -> Answer: O/X (or TRUE/FALSE)
+//  MCQ   -> Options filled, Answer: option number (1-based) or matching option text
+//  SHORT -> Answer: the correct text, options ignored
+//  ORDER -> Option1..N already in the correct order, Answer ignored
+function parseExcelQuestions(rows){
+  const questions = [];
+  const errors = [];
+  rows.forEach((row, i)=>{
+    if(!row || !row.length) return;
+    const type = String(row[0]||'').trim().toUpperCase();
+    const text = String(row[1]||'').trim();
+    if(!type && !text) return; // blank row
+    if(!text){ errors.push(`Row ${i+2}: missing question text — skipped.`); return; }
+    const opts = [row[2],row[3],row[4],row[5],row[6],row[7]].map(o=>o==null?'':String(o).trim()).filter(Boolean);
+    const answerRaw = row[8]!=null ? String(row[8]).trim() : '';
+    if(type==='OX'){
+      const up = answerRaw.toUpperCase();
+      const correct = (up==='O'||up==='TRUE'||up==='T') ? 0 : (up==='X'||up==='FALSE'||up==='F') ? 1 : null;
+      if(correct===null){ errors.push(`Row ${i+2} (OX): Answer should be O or X — skipped.`); return; }
+      questions.push({type:'ox', text, options:['O','X'], correct});
+    } else if(type==='MCQ' || type===''){
+      if(opts.length<2){ errors.push(`Row ${i+2} (MCQ): needs at least 2 options — skipped.`); return; }
+      let correct = parseInt(answerRaw,10);
+      if(Number.isFinite(correct) && correct>=1 && correct<=opts.length){ correct = correct-1; }
+      else { correct = opts.findIndex(o=>normalizeAnswer(o)===normalizeAnswer(answerRaw)); }
+      if(correct<0 || correct==null || !Number.isFinite(correct)){ errors.push(`Row ${i+2} (MCQ): couldn't match Answer to an option — skipped.`); return; }
+      questions.push({type:'mcq', text, options:opts, correct});
+    } else if(type==='SHORT'){
+      if(!answerRaw){ errors.push(`Row ${i+2} (SHORT): missing Answer — skipped.`); return; }
+      questions.push({type:'short', text, answer:answerRaw});
+    } else if(type==='ORDER'){
+      if(opts.length<2){ errors.push(`Row ${i+2} (ORDER): needs at least 2 items in Option columns — skipped.`); return; }
+      questions.push({type:'order', text, items:opts});
+    } else {
+      errors.push(`Row ${i+2}: unknown type "${row[0]}" — skipped.`);
+    }
+  });
+  return {questions, errors};
+}
+
+/* ---------- app state ---------- */
+let ROLE = null; // null | 'profauth' | 'prof' | 'student'
+const PROF_PASSCODE = '5305';
+let profAuthenticated = false;
+let profAuthError = '';
+let PROF_VIEW = 'home';
+let PROF = { quizIndex:[], activeQuiz:null, activeQuizSession:null, editingQuizId:null, editingQuizData:null, wcIndex:[], activeWC:null, builder:null };
+let STU = { step:'code', code:null, sid:null, name:null, error:'', session:null, kind:null,
+            quizAnswers:{}, quizIdx:0, quizSelected:null, quizPollHandle:null,
+            wcWords:[] };
+
+function render(){
+  const main = document.getElementById('main');
+  if(ROLE==='profauth'){ main.innerHTML = viewProfAuth(); bindProfAuth(); return; }
+  if(!ROLE){ main.innerHTML = viewRoleSelect(); bindRoleSelect(); return; }
+  if(ROLE==='prof'){
+    let inner;
+    if(PROF_VIEW==='home') inner = viewProfHome();
+    else if(PROF_VIEW==='quiz-list') inner = viewQuizList();
+    else if(PROF_VIEW==='quiz-create') inner = viewQuizCreate();
+    else if(PROF_VIEW==='quiz-run-live') inner = viewQuizRunLive();
+    else if(PROF_VIEW==='quiz-run-selfpaced') inner = viewQuizRunSelfpaced();
+    else if(PROF_VIEW==='wc-list') inner = viewWCList();
+    else if(PROF_VIEW==='wc-create') inner = viewWCCreate();
+    else if(PROF_VIEW==='wc-run') inner = viewWCRun();
+    else if(PROF_VIEW==='stopwatch') inner = viewStopwatch();
+    main.innerHTML = '<p style="margin-bottom:14px;"><button class="link-btn" id="role-switch">← Switch role (Instructor / Student)</button></p>' + inner;
+    if(PROF_VIEW==='home') bindProfHome();
+    else if(PROF_VIEW==='quiz-list') bindQuizList();
+    else if(PROF_VIEW==='quiz-create') bindQuizCreate();
+    else if(PROF_VIEW==='quiz-run-live') bindQuizRunLive();
+    else if(PROF_VIEW==='quiz-run-selfpaced') bindQuizRunSelfpaced();
+    else if(PROF_VIEW==='wc-list') bindWCList();
+    else if(PROF_VIEW==='wc-create') bindWCCreate();
+    else if(PROF_VIEW==='wc-run') bindWCRun();
+    else if(PROF_VIEW==='stopwatch') bindStopwatch();
+    document.getElementById('role-switch').addEventListener('click', ()=>{ profAuthenticated=false; ROLE=null; render(); });
+  } else {
+    main.innerHTML = '<p style="margin-bottom:14px;"><button class="link-btn" id="role-switch">← Switch role (Instructor / Student)</button></p>' + viewStudent();
+    bindStudent();
+    const sw = document.getElementById('role-switch');
+    if(sw) sw.addEventListener('click', ()=>{
+      clearInterval(STU.quizPollHandle);
+      profAuthenticated=false; ROLE=null;
+      STU = { step:'code', code:null, sid:null, name:null, error:'', session:null, kind:null, quizAnswers:{}, quizIdx:0, quizSelected:null, quizPollHandle:null, wcWords:[] };
+      render();
+    });
+  }
+}
+
+/* ================= ROLE SELECT ================= */
+function viewRoleSelect(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Class Tools</p>
+    <h1 class="page-title">Join with a room code</h1>
+  </div>
+  <div style="max-width:360px;margin:0 auto;">
+    <div class="menu-tile" id="role-student"><span class="icon">🙋</span><span class="name">Student</span></div>
+  </div>
+  <p style="text-align:center;margin-top:24px;"><button class="link-btn" id="role-prof">Instructor sign-in</button></p>`;
+}
+function bindRoleSelect(){
+  document.getElementById('role-student').addEventListener('click', ()=>{ ROLE='student'; render(); });
+  document.getElementById('role-prof').addEventListener('click', ()=>{
+    if(profAuthenticated){ ROLE='prof'; render(); return; } // keeps whatever PROF_VIEW was already showing (e.g. a session in progress)
+    ROLE='profauth'; profAuthError=''; render();
+  });
+}
+function viewProfAuth(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Instructor sign-in</p>
+    <h1 class="page-title">Enter the instructor passcode</h1>
+  </div>
+  <div style="max-width:280px;margin:0 auto;">
+    <input type="password" id="prof-passcode" class="roomcode-input" placeholder="••••" maxlength="12" autocomplete="off">
+    <div style="height:12px;"></div>
+    <button class="brass" style="width:100%;" id="prof-passcode-go">Enter</button>
+    <div class="error-text">${esc(profAuthError)}</div>
+    <p style="text-align:center;margin-top:20px;"><button class="link-btn" id="prof-passcode-back">← Back</button></p>
+  </div>`;
+}
+function bindProfAuth(){
+  document.getElementById('prof-passcode-back').addEventListener('click', ()=>{ ROLE=null; render(); });
+  const goBtn = document.getElementById('prof-passcode-go');
+  const input = document.getElementById('prof-passcode');
+  const submit = ()=>{
+    if(input.value === PROF_PASSCODE){ profAuthenticated=true; ROLE='prof'; render(); }
+    else { profAuthError = 'Incorrect passcode.'; render(); }
+  };
+  goBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submit(); });
+}
+
+/* ================= PROFESSOR HOME ================= */
+function viewProfHome(){
+  return `
+  <p class="page-eyebrow">Instructor</p>
+  <h1 class="page-title">Class Tools</h1>
+  <p class="page-desc">Pick a tool to run in class.</p>
+  <div class="menu-grid">
+    <div class="menu-tile" data-tool="quiz"><span class="icon">📝</span><span class="name">Quiz</span></div>
+    <div class="menu-tile" data-tool="wc"><span class="icon">☁️</span><span class="name">Word Cloud</span></div>
+    <div class="menu-tile" data-tool="stopwatch"><span class="icon">⏱️</span><span class="name">Stopwatch</span></div>
+  </div>`;
+}
+function bindProfHome(){
+  document.querySelectorAll('[data-tool]').forEach(el=>el.addEventListener('click', async ()=>{
+    const tool = el.dataset.tool;
+    if(tool==='quiz'){ PROF.quizIndex = await sGet('quiz-set-index', false) || []; PROF_VIEW='quiz-list'; }
+    else if(tool==='wc'){ PROF.wcIndex = await sGet('wc-index', false) || []; PROF_VIEW='wc-list'; }
+    else if(tool==='stopwatch'){ PROF_VIEW='stopwatch'; }
+    render();
+  }));
+}
+
+/* ================= QUIZ: LIST ================= */
+function viewQuizList(){
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-home">← Class Tools</button></p>
+  <h1 class="page-title">Quiz</h1>
+  <button class="brass" id="quiz-new">+ New quiz</button>
+  <p style="font-size:13.5px;color:var(--charcoal-soft);margin:10px 0 0;">
+    <strong>Live</strong> — everyone sees the same question at the same time; you control when to move on, optionally with a countdown per question.
+    <strong>Self-paced</strong> — each student works through all questions on their own, in their own time; good for homework-style checks.
+  </p>
+  <div class="card" style="margin-top:16px;">
+    ${PROF.quizIndex.length ? PROF.quizIndex.map(q=>`
+      <div class="list-row">
+        <div><div class="title">${esc(q.title)}</div><div class="meta">${q.questionCount} question${q.questionCount!==1?'s':''}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="brass small" data-start-live="${q.id}">Start Live</button>
+          <button class="secondary small" data-start-self="${q.id}">Start Self-paced</button>
+          <button class="secondary small" data-edit-quiz="${q.id}">Edit</button>
+          <button class="danger small" data-del-quiz="${q.id}">Delete</button>
+        </div>
+      </div>`).join('') : '<div class="empty">No saved quizzes yet.</div>'}
+  </div>`;
+}
+function bindQuizList(){
+  document.getElementById('back-home').addEventListener('click', ()=>{ PROF_VIEW='home'; render(); });
+  document.getElementById('quiz-new').addEventListener('click', ()=>{ PROF.editingQuizId=null; PROF_VIEW='quiz-create'; render(); });
+  document.querySelectorAll('[data-start-live]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startLive, 'live')));
+  document.querySelectorAll('[data-start-self]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startSelf, 'selfpaced')));
+  document.querySelectorAll('[data-edit-quiz]').forEach(b=>b.addEventListener('click', async ()=>{
+    const qid = b.dataset.editQuiz;
+    const qset = await sGet(`quiz-set:${qid}`, false);
+    if(!qset){ alert('This quiz could not be found.'); return; }
+    PROF.editingQuizId = qid;
+    PROF.editingQuizData = qset;
+    PROF_VIEW='quiz-create'; render();
+  }));
+  document.querySelectorAll('[data-del-quiz]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('Delete this quiz?')) return;
+    const qid = b.dataset.delQuiz;
+    await sDel(`quiz-set:${qid}`, false);
+    PROF.quizIndex = PROF.quizIndex.filter(q=>q.id!==qid);
+    await sSet('quiz-set-index', PROF.quizIndex, false);
+    render();
+  }));
+}
+async function startQuizSession(qid, mode){
+  const qset = await sGet(`quiz-set:${qid}`, false);
+  if(!qset) return;
+  let timerSeconds = 0;
+  if(mode==='live'){
+    const input = prompt("Seconds per question — everyone answers within this time before you move on.\nEnter 0 for no timer (advance manually whenever you like).", "20");
+    if(input===null) return; // cancelled
+    timerSeconds = Math.max(0, parseInt(input,10) || 0);
+  }
+  const code = roomCode();
+  const session = { roomCode:code, mode, title:qset.title, questions:qset.questions, currentIndex:0, revealed:false,
+    timerSeconds, questionEndsAt: timerSeconds>0 ? Date.now()+timerSeconds*1000 : null, createdAt:Date.now() };
+  await sSet(`quiz-session:${code}`, session);
+  PROF.activeQuizSession = session;
+  PROF_VIEW = (mode==='live') ? 'quiz-run-live' : 'quiz-run-selfpaced';
+  render();
+}
+
+/* ================= QUIZ: CREATE ================= */
+let qzQuestions = [];
+const QZ_TYPES = [
+  {key:'mcq', label:'4-choice'},
+  {key:'ox', label:'O / X'},
+  {key:'short', label:'Short answer'},
+  {key:'order', label:'Ordering'},
+];
+function blankQuestion(type){
+  if(type==='ox') return {type:'ox', text:'', correct:0};
+  if(type==='short') return {type:'short', text:'', answer:''};
+  if(type==='order') return {type:'order', text:'', items:['','']};
+  return {type:'mcq', text:'', options:['',''], correct:0};
+}
+function viewQuizCreate(){
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-quizlist">← Quiz</button></p>
+  <h1 class="page-title">${PROF.editingQuizId ? 'Edit quiz' : 'New quiz'}</h1>
+  <div class="card">
+    <label>Upload questions from Excel (optional)</label>
+    <div class="file-drop">
+      <button class="secondary small" id="qz-excel-template" type="button">⬇ Download template</button>
+      <button class="secondary small" id="qz-excel-btn" type="button">+ Choose file</button>
+      <div style="font-size:13px;color:var(--charcoal-soft);margin-top:8px;">One sheet, columns: <strong>Type | Question | Option1..Option6 | Answer</strong></div>
+      <div id="qz-excel-status" style="margin-top:8px;font-size:14px;"></div>
+    </div>
+    <p style="font-size:12.5px;color:var(--charcoal-soft);margin-top:8px;">
+      Type = OX / MCQ / SHORT / ORDER.
+      OX → Answer is O or X. MCQ → fill Option columns, Answer is the option number (1, 2, 3…). SHORT → Answer is the correct text, leave options blank. ORDER → put the items in Option columns already in the correct order, leave Answer blank.
+    </p>
+  </div>
+  <div class="card">
+    <div class="field"><label>Quiz title</label><input type="text" id="qz-title" placeholder="e.g. Chapter 3 concept check" value="${PROF.editingQuizId ? escAttr(PROF.editingQuizData.title) : ''}"></div>
+    <div id="qz-questions"></div>
+    <div class="type-tabs" id="qz-add-type-tabs">
+      ${QZ_TYPES.map(t=>`<span class="type-tab" data-add-type="${t.key}">+ ${t.label}</span>`).join('')}
+    </div>
+    <button class="danger small" id="qz-clear-all" type="button" style="margin-top:6px;">Clear all questions</button>
+    <hr class="hairline">
+    <button class="brass" id="qz-save">${PROF.editingQuizId ? 'Save changes' : 'Save quiz'}</button>
+    <div id="qz-error" class="error-text"></div>
+  </div>`;
+}
+function qzQuestionRow(q, idx){
+  const typeTabs = `<div class="type-tabs">${QZ_TYPES.map(t=>`<span class="type-tab ${q.type===t.key?'active':''}" data-type-switch="${t.key}">${t.label}</span>`).join('')}</div>`;
+  let body = '';
+  if(q.type==='ox'){
+    body = `
+      <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:6px;"><input type="radio" name="qz-ox-${idx}" class="qz-ox-correct" value="0" ${q.correct===0?'checked':''}> Correct answer: O</label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="radio" name="qz-ox-${idx}" class="qz-ox-correct" value="1" ${q.correct===1?'checked':''}> Correct answer: X</label>`;
+  } else if(q.type==='short'){
+    body = `<div class="field"><label>Correct answer</label><input type="text" class="qz-short-answer" placeholder="e.g. Paris" value="${escAttr(q.answer)}"></div>
+      <p style="font-size:12.5px;color:var(--charcoal-soft);">Graded as an exact match, ignoring capitalization and extra spaces.</p>`;
+  } else if(q.type==='order'){
+    body = `<label>Items, in the correct order</label>
+      ${q.items.map((it,ii)=>`<div class="order-item-row"><span class="idx">${ii+1}.</span><input type="text" class="qz-order-item" data-ii="${ii}" placeholder="Step ${ii+1}" value="${escAttr(it)}"><button class="secondary small qz-order-remove" data-ii="${ii}" type="button">✕</button></div>`).join('')}
+      <button class="secondary small qz-order-add" type="button">+ Add item</button>`;
+  } else { // mcq
+    body = q.options.map((o,oi)=>`
+      <div class="row" style="margin-bottom:8px;align-items:center;">
+        <input type="text" class="qz-opt" data-oi="${oi}" placeholder="Option ${oi+1}" value="${escAttr(o)}">
+        <label style="display:flex;align-items:center;gap:5px;flex:0 0 80px;font-weight:400;"><input type="radio" name="qz-correct-${idx}" class="qz-correct" data-oi="${oi}" ${q.correct===oi?'checked':''}> Correct</label>
+      </div>`).join('') + `<button class="secondary small qz-mcq-add-opt" type="button">+ Add option</button>`;
+  }
+  return `<div class="qbuild-card" data-qidx="${idx}">
+    ${typeTabs}
+    <div class="field"><label>Question ${idx+1}</label><input type="text" class="qz-q-text" placeholder="Question text" value="${escAttr(q.text)}"></div>
+    <div class="qz-type-body">${body}</div>
+    <button class="secondary small qz-remove-q" data-idx="${idx}" type="button" style="margin-top:10px;">Remove question</button>
+  </div>`;
+}
+function syncQuestionFromCard(card, idx){
+  const q = qzQuestions[idx];
+  q.text = card.querySelector('.qz-q-text').value;
+  if(q.type==='mcq'){
+    card.querySelectorAll('.qz-opt').forEach(inp=>{ q.options[+inp.dataset.oi] = inp.value; });
+    card.querySelectorAll('.qz-correct').forEach(r=>{ if(r.checked) q.correct = +r.dataset.oi; });
+  } else if(q.type==='ox'){
+    const checked = card.querySelector('.qz-ox-correct:checked');
+    if(checked) q.correct = +checked.value;
+  } else if(q.type==='short'){
+    q.answer = card.querySelector('.qz-short-answer').value;
+  } else if(q.type==='order'){
+    card.querySelectorAll('.qz-order-item').forEach(inp=>{ q.items[+inp.dataset.ii] = inp.value; });
+  }
+}
+function renderQzQuestions(){
+  document.getElementById('qz-questions').innerHTML = qzQuestions.map((q,i)=>qzQuestionRow(q,i)).join('');
+  document.querySelectorAll('.qbuild-card').forEach(card=>{
+    const idx = +card.dataset.qidx;
+    card.querySelectorAll('[data-type-switch]').forEach(tab=>tab.addEventListener('click', ()=>{
+      syncQuestionFromCard(card, idx);
+      const newType = tab.dataset.typeSwitch;
+      const text = qzQuestions[idx].text;
+      qzQuestions[idx] = blankQuestion(newType);
+      qzQuestions[idx].text = text;
+      renderQzQuestions();
+    }));
+    const removeBtn = card.querySelector('.qz-remove-q');
+    if(removeBtn) removeBtn.addEventListener('click', ()=>{ qzQuestions.splice(+removeBtn.dataset.idx,1); renderQzQuestions(); });
+    const addOptBtn = card.querySelector('.qz-mcq-add-opt');
+    if(addOptBtn) addOptBtn.addEventListener('click', ()=>{ syncQuestionFromCard(card, idx); qzQuestions[idx].options.push(''); renderQzQuestions(); });
+    const addItemBtn = card.querySelector('.qz-order-add');
+    if(addItemBtn) addItemBtn.addEventListener('click', ()=>{ syncQuestionFromCard(card, idx); qzQuestions[idx].items.push(''); renderQzQuestions(); });
+    card.querySelectorAll('.qz-order-remove').forEach(b=>b.addEventListener('click', ()=>{
+      syncQuestionFromCard(card, idx);
+      qzQuestions[idx].items.splice(+b.dataset.ii,1);
+      renderQzQuestions();
+    }));
+  });
+}
+function bindQuizCreate(){
+  document.getElementById('back-quizlist').addEventListener('click', ()=>{ PROF.editingQuizId=null; PROF.editingQuizData=null; PROF_VIEW='quiz-list'; render(); });
+  qzQuestions = PROF.editingQuizId ? JSON.parse(JSON.stringify(PROF.editingQuizData.questions)) : [blankQuestion('mcq')];
+  renderQzQuestions();
+  document.querySelectorAll('[data-add-type]').forEach(tab=>tab.addEventListener('click', ()=>{
+    document.querySelectorAll('#qz-questions [data-qidx]').forEach(card=>syncQuestionFromCard(card, +card.dataset.qidx));
+    qzQuestions.push(blankQuestion(tab.dataset.addType));
+    renderQzQuestions();
+  }));
+  document.getElementById('qz-clear-all').addEventListener('click', ()=>{
+    if(qzQuestions.some(q=>q.text.trim()) && !confirm('Remove all questions currently in the builder?')) return;
+    qzQuestions = [];
+    renderQzQuestions();
+  });
+  document.getElementById('qz-excel-template').addEventListener('click', ()=>{
+    const rows = [
+      ['Type','Question','Option1','Option2','Option3','Option4','Option5','Option6','Answer'],
+      ['OX','Seoul is the capital of South Korea.','','','','','','','O'],
+      ['MCQ','Which of the following is correct?','Choice A','Choice B','Choice C','Choice D','','','2'],
+      ['SHORT','What is the capital of France?','','','','','','','Paris'],
+      ['ORDER','Put these steps in the correct order','First step','Second step','Third step','','','',''],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Questions');
+    XLSX.writeFile(wb, 'quiz-template.xlsx');
+  });
+  document.getElementById('qz-excel-btn').addEventListener('click', async ()=>{
+    const files = await pickFiles(false);
+    const file = files && files[0];
+    const statusEl = document.getElementById('qz-excel-status');
+    if(!file) return;
+    statusEl.textContent = 'Reading file…';
+    try{
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+      const {questions, errors} = parseExcelQuestions(rows.slice(1));
+      if(!questions.length){ statusEl.innerHTML = `<span style="color:var(--brick);">No valid questions found.</span>`; return; }
+      // Sync whatever's already typed in the builder first, then drop any still-blank
+      // placeholder question, and add the file's questions after it — nothing typed by
+      // hand gets overwritten, so Excel and manual questions can be mixed freely.
+      document.querySelectorAll('#qz-questions [data-qidx]').forEach(card=>syncQuestionFromCard(card, +card.dataset.qidx));
+      qzQuestions = qzQuestions.filter(q=>q.text.trim());
+      qzQuestions = qzQuestions.concat(questions);
+      renderQzQuestions();
+      statusEl.innerHTML = `Added ${questions.length} question(s) from the file — ${qzQuestions.length} total now.` + (errors.length ? `<br><span style="color:var(--brick);">${errors.map(esc).join('<br>')}</span>` : '');
+    }catch(err){
+      console.error(err);
+      statusEl.innerHTML = `<span style="color:var(--brick);">Couldn't read this file. Please check the format.</span>`;
+    }
+  });
+  document.getElementById('qz-save').addEventListener('click', async ()=>{
+    document.querySelectorAll('#qz-questions [data-qidx]').forEach(card=>syncQuestionFromCard(card, +card.dataset.qidx));
+    const title = document.getElementById('qz-title').value.trim() || 'Untitled quiz';
+    const valid = qzQuestions.filter(q=>{
+      if(!q.text.trim()) return false;
+      if(q.type==='mcq') return q.options.filter(o=>o.trim()).length>=2;
+      if(q.type==='short') return q.answer.trim();
+      if(q.type==='order') return q.items.filter(o=>o.trim()).length>=2;
+      return true; // ox
+    });
+    if(!valid.length){ document.getElementById('qz-error').textContent = 'Add at least one complete question.'; return; }
+    const qid = PROF.editingQuizId || uid();
+    await sSet(`quiz-set:${qid}`, {id:qid, title, questions:valid}, false);
+    if(PROF.editingQuizId){
+      const idx = PROF.quizIndex.find(q=>q.id===qid);
+      if(idx){ idx.title = title; idx.questionCount = valid.length; }
+    } else {
+      PROF.quizIndex.push({id:qid, title, questionCount:valid.length});
+    }
+    await sSet('quiz-set-index', PROF.quizIndex, false);
+    PROF.editingQuizId = null; PROF.editingQuizData = null;
+    PROF_VIEW='quiz-list'; render();
+  });
+}
+
+/* ================= QUIZ: RUN LIVE ================= */
+function questionPreviewHTML(q, revealed){
+  if(q.type==='short'){
+    return `<p style="color:var(--charcoal-soft);font-size:15px;">Short-answer question.</p>${revealed?`<div class="choice-btn correct">Correct answer: ${esc(q.answer)}</div>`:''}`;
+  }
+  if(q.type==='order'){
+    return `<p style="color:var(--charcoal-soft);font-size:15px;">Ordering question — students arrange ${q.items.length} items.</p>${revealed?q.items.map((it,i)=>`<div class="choice-btn correct">${i+1}. ${esc(it)}</div>`).join(''):''}`;
+  }
+  return q.options.map((o,oi)=>`<div class="choice-btn ${revealed && oi===q.correct?'correct':''}">${String.fromCharCode(65+oi)}. ${esc(o)}</div>`).join('');
+}
+function viewQuizRunLive(){
+  const s = PROF.activeQuizSession;
+  const q = s.questions[s.currentIndex];
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-quizlist2">← Quiz</button></p>
+  <h1 class="page-title">${esc(s.title)} <span class="tag">Live</span></h1>
+  <div class="card" style="text-align:center;">
+    <div class="tag">Room code</div>
+    <div class="roomcode">${s.roomCode}</div>
+    ${s.timerSeconds>0 ? `<div id="qz-timer" style="font-family:var(--serif);font-size:28px;color:var(--mint-deep);margin-top:8px;"></div>` : ''}
+  </div>
+  <div class="card">
+    <div class="meta" style="color:var(--charcoal-soft);font-size:13.5px;margin-bottom:8px;">Question ${s.currentIndex+1} / ${s.questions.length} <span class="tag">${q.type.toUpperCase()}</span></div>
+    <h3>${esc(q.text)}</h3>
+    ${questionPreviewHTML(q, s.revealed)}
+    <div id="qz-live-results"></div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="secondary" id="qz-prev" ${s.currentIndex===0?'disabled':''}>Previous</button>
+    <button class="secondary" id="qz-reveal">${s.revealed?'Hide answer':'Reveal answer'}</button>
+    <button class="secondary" id="qz-refresh">Refresh responses</button>
+    <button class="brass" id="qz-next" ${s.currentIndex===s.questions.length-1?'disabled':''}>Next</button>
+    <button class="secondary" id="qz-preview">👀 Preview as student</button>
+    <button class="danger" id="qz-end">End session</button>
+  </div>`;
+}
+let qzProfTimerHandle = null;
+function tickProfTimer(){
+  const s = PROF.activeQuizSession;
+  const el = document.getElementById('qz-timer');
+  if(!el || !s || !s.questionEndsAt) return;
+  const left = Math.max(0, Math.ceil((s.questionEndsAt-Date.now())/1000));
+  el.textContent = left>0 ? `⏱ ${left}s` : "⏱ Time's up";
+}
+function resetQuizTimer(){
+  const s = PROF.activeQuizSession;
+  s.questionEndsAt = s.timerSeconds>0 ? Date.now()+s.timerSeconds*1000 : null;
+}
+async function persistQuizSession(){ await sSet(`quiz-session:${PROF.activeQuizSession.roomCode}`, PROF.activeQuizSession); }
+function bindQuizRunLive(){
+  clearInterval(qzProfTimerHandle);
+  if(PROF.activeQuizSession.timerSeconds>0){ tickProfTimer(); qzProfTimerHandle = setInterval(tickProfTimer, 1000); }
+  document.getElementById('back-quizlist2').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('qz-prev').addEventListener('click', ()=>{ PROF.activeQuizSession.currentIndex--; PROF.activeQuizSession.revealed=false; resetQuizTimer(); persistQuizSession(); render(); });
+  document.getElementById('qz-next').addEventListener('click', ()=>{ PROF.activeQuizSession.currentIndex++; PROF.activeQuizSession.revealed=false; resetQuizTimer(); persistQuizSession(); render(); });
+  document.getElementById('qz-reveal').addEventListener('click', ()=>{ PROF.activeQuizSession.revealed=!PROF.activeQuizSession.revealed; persistQuizSession(); render(); });
+  document.getElementById('qz-preview').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); previewAsStudent('quiz', PROF.activeQuizSession); });
+  document.getElementById('qz-end').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('qz-refresh').addEventListener('click', loadQuizLiveResults);
+}
+async function loadQuizLiveResults(){
+  const s = PROF.activeQuizSession;
+  const q = s.questions[s.currentIndex];
+  const keys = await sList(`quiz-vote:${s.roomCode}:${s.currentIndex}:`);
+  const el = document.getElementById('qz-live-results');
+
+  if(q.type==='short' || q.type==='order'){
+    const rows = [];
+    for(const k of keys){
+      const sid = k.split(':').pop();
+      const v = await sGet(k);
+      rows.push({sid, v});
+    }
+    if(!rows.length){ el.innerHTML = '<hr class="hairline"><div class="empty">No responses yet.</div>'; return; }
+    el.innerHTML = '<hr class="hairline">' + rows.map(r=>{
+      const display = q.type==='order' ? (Array.isArray(r.v)?r.v.join(' → '):'') : esc(r.v);
+      const correct = isCorrectAnswer(q, r.v);
+      return `<div class="bar-row" style="font-size:14px;"><strong>${esc(r.sid)}:</strong> ${display} ${s.revealed ? (correct?'✅':'❌') : ''}</div>`;
+    }).join('');
+    return;
+  }
+
+  const counts = new Array(q.options.length).fill(0);
+  for(const k of keys){ const v = await sGet(k); if(v!==null && counts[v]!==undefined) counts[v]++; }
+  const total = counts.reduce((a,b)=>a+b,0) || 1;
+  el.innerHTML = `<hr class="hairline">` + q.options.map((o,oi)=>`
+    <div class="bar-row">
+      <div class="bar-label"><span>${String.fromCharCode(65+oi)}. ${esc(o)}</span><span>${counts[oi]} votes</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(counts[oi]/total*100).toFixed(0)}%;"></div></div>
+    </div>`).join('');
+}
+
+/* ================= QUIZ: RUN SELF-PACED (monitor) ================= */
+function viewQuizRunSelfpaced(){
+  const s = PROF.activeQuizSession;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-quizlist3">← Quiz</button></p>
+  <h1 class="page-title">${esc(s.title)} <span class="tag">Self-paced</span></h1>
+  <div class="card" style="text-align:center;">
+    <div class="tag">Room code</div>
+    <div class="roomcode">${s.roomCode}</div>
+    <p style="color:var(--charcoal-soft);font-size:14.5px;">Students work through all ${s.questions.length} questions at their own pace, and can retry after finishing.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="secondary" id="qzsp-refresh">Refresh progress</button>
+    <button class="secondary" id="qzsp-export">⬇ Export scores (Excel)</button>
+    <button class="secondary" id="qzsp-preview">👀 Preview as student</button>
+    <button class="danger" id="qzsp-end">End</button>
+  </div>
+  <div id="qzsp-students" style="margin-top:16px;"><div class="empty">Click refresh to load student progress.</div></div>`;
+}
+function bindQuizRunSelfpaced(){
+  document.getElementById('back-quizlist3').addEventListener('click', ()=>{ PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('qzsp-end').addEventListener('click', ()=>{ PROF_VIEW='quiz-list'; render(); });
+  document.getElementById('qzsp-preview').addEventListener('click', ()=>{ previewAsStudent('quiz', PROF.activeQuizSession); });
+  document.getElementById('qzsp-refresh').addEventListener('click', loadQuizSelfpacedProgress);
+  document.getElementById('qzsp-export').addEventListener('click', exportQuizScores);
+  loadQuizSelfpacedProgress();
+}
+async function loadQuizSelfpacedProgress(){
+  const s = PROF.activeQuizSession;
+  const el = document.getElementById('qzsp-students');
+  const keys = await sList(`quiz-answer:${s.roomCode}:`);
+  const students = [];
+  for(const k of keys){ const r = await sGet(k); if(r) students.push(r); }
+  if(!students.length){ el.innerHTML = '<div class="empty">No students have joined yet.</div>'; return; }
+  students.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  el.innerHTML = `<div class="card">` + students.map(st=>{
+    const answered = Object.keys(st.answers||{}).length;
+    const attempts = st.attempts || 1;
+    const scoreText = st.completed ? `Score: ${st.score} / ${s.questions.length}` : `${answered} / ${s.questions.length} answered`;
+    return `<div class="list-row"><div><div class="title" style="font-size:15px;">${esc(st.name)} <span style="font-size:12.5px;color:var(--charcoal-soft);font-family:var(--sans);">· ${esc(st.sid)}</span></div><div class="meta">Attempt ${attempts}${st.completed?'':' (in progress)'}</div></div><div class="meta">${scoreText}</div></div>`;
+  }).join('') + `</div>`;
+}
+async function exportQuizScores(){
+  const s = PROF.activeQuizSession;
+  const keys = await sList(`quiz-answer:${s.roomCode}:`);
+  const rows = [];
+  for(const k of keys){
+    const st = await sGet(k);
+    if(!st) continue;
+    const attempts = st.attempts || 1;
+    const bestScore = (st.history && st.history.length) ? Math.max(...st.history.map(h=>h.score), st.completed?st.score:-1) : (st.completed?st.score:null);
+    rows.push({
+      'Student ID': st.sid, Name: st.name, 'Latest score': st.completed ? `${st.score} / ${s.questions.length}` : 'In progress',
+      'Best score': bestScore!=null ? `${bestScore} / ${s.questions.length}` : '', Attempts: attempts
+    });
+  }
+  if(!rows.length){ alert('No student data to export yet.'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Scores');
+  XLSX.writeFile(wb, `quiz-scores-${s.roomCode}.xlsx`);
+}
+
+/* ================= WORD CLOUD: LIST ================= */
+function viewWCList(){
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-home2">← Class Tools</button></p>
+  <h1 class="page-title">Word Cloud</h1>
+  <button class="brass" id="wc-new">+ New word cloud</button>
+  <div class="card" style="margin-top:16px;">
+    ${PROF.wcIndex.length ? PROF.wcIndex.slice().sort((a,b)=>b.createdAt-a.createdAt).map(w=>`
+      <div class="list-row">
+        <div><div class="title">${esc(w.prompt)}</div><div class="meta">Room ${w.code} · up to ${w.maxWords} word${w.maxWords!==1?'s':''} each</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="brass small" data-open-wc="${w.code}">Open</button>
+          <button class="danger small" data-del-wc="${w.code}">Delete</button>
+        </div>
+      </div>`).join('') : '<div class="empty">No word clouds yet.</div>'}
+  </div>`;
+}
+function bindWCList(){
+  document.getElementById('back-home2').addEventListener('click', ()=>{ PROF_VIEW='home'; render(); });
+  document.getElementById('wc-new').addEventListener('click', ()=>{ PROF_VIEW='wc-create'; render(); });
+  document.querySelectorAll('[data-open-wc]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.dataset.openWc;
+    const session = await sGet(`wc-session:${code}`);
+    if(!session){ alert('This word cloud could not be found.'); return; }
+    PROF.activeWC = session; PROF_VIEW='wc-run'; render();
+  }));
+  document.querySelectorAll('[data-del-wc]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('Delete this word cloud and all submitted words?')) return;
+    const code = b.dataset.delWc;
+    const keys = await sList(`wc-words:${code}:`);
+    for(const k of keys) await sDel(k);
+    await sDel(`wc-session:${code}`);
+    PROF.wcIndex = PROF.wcIndex.filter(w=>w.code!==code);
+    await sSet('wc-index', PROF.wcIndex, false);
+    render();
+  }));
+}
+
+/* ================= WORD CLOUD: CREATE ================= */
+function viewWCCreate(){
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-wclist">← Word Cloud</button></p>
+  <h1 class="page-title">New word cloud</h1>
+  <div class="card">
+    <div class="field"><label>Prompt</label><textarea id="wc-prompt" placeholder="e.g. One word to describe today's case study"></textarea></div>
+    <div class="field" style="max-width:160px;"><label>Words per student</label><input type="number" id="wc-maxwords" value="1" min="1" max="10"></div>
+    <button class="brass" id="wc-start">Start</button>
+    <div id="wc-error" class="error-text"></div>
+  </div>`;
+}
+function bindWCCreate(){
+  document.getElementById('back-wclist').addEventListener('click', ()=>{ PROF_VIEW='wc-list'; render(); });
+  document.getElementById('wc-start').addEventListener('click', async ()=>{
+    const prompt = document.getElementById('wc-prompt').value.trim();
+    const maxWords = Math.max(1, Math.min(10, +document.getElementById('wc-maxwords').value || 1));
+    if(!prompt){ document.getElementById('wc-error').textContent = 'Please enter a prompt.'; return; }
+    const code = roomCode();
+    const session = { roomCode:code, prompt, maxWords, createdAt:Date.now() };
+    await sSet(`wc-session:${code}`, session);
+    PROF.wcIndex.push({code, prompt, maxWords, createdAt:session.createdAt});
+    await sSet('wc-index', PROF.wcIndex, false);
+    PROF.activeWC = session;
+    PROF_VIEW='wc-run'; render();
+  });
+}
+
+/* ================= WORD CLOUD: RUN ================= */
+function viewWCRun(){
+  const s = PROF.activeWC;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-wclist2">← Word Cloud</button></p>
+  <h1 class="question-block">${esc(s.prompt)}</h1>
+  <div class="card" style="text-align:center;">
+    <div class="tag">Room code</div>
+    <div class="roomcode">${s.roomCode}</div>
+    <p style="color:var(--charcoal-soft);font-size:14.5px;">Each student can submit up to ${s.maxWords} word${s.maxWords!==1?'s':''}.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="secondary" id="wc-refresh">Refresh</button>
+    <button class="secondary" id="wc-export">⬇ Export words (Excel)</button>
+    <button class="danger" id="wc-clear">Clear all words</button>
+    <button class="secondary" id="wc-preview">👀 Preview as student</button>
+    <button class="danger" id="wc-end">End</button>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <div class="wc-cloud" id="wc-cloud-area"><div class="empty">Click refresh to see submitted words.</div></div>
+  </div>`;
+}
+function bindWCRun(){
+  document.getElementById('back-wclist2').addEventListener('click', ()=>{ PROF_VIEW='wc-list'; render(); });
+  document.getElementById('wc-end').addEventListener('click', ()=>{ PROF_VIEW='wc-list'; render(); });
+  document.getElementById('wc-preview').addEventListener('click', ()=>{ previewAsStudent('wc', PROF.activeWC); });
+  document.getElementById('wc-refresh').addEventListener('click', loadWordCloud);
+  document.getElementById('wc-export').addEventListener('click', exportWordCloud);
+  document.getElementById('wc-clear').addEventListener('click', async ()=>{
+    if(!confirm('Clear all submitted words? This cannot be undone.')) return;
+    const s = PROF.activeWC;
+    const keys = await sList(`wc-words:${s.roomCode}:`);
+    for(const k of keys) await sDel(k);
+    loadWordCloud();
+  });
+  loadWordCloud();
+}
+async function exportWordCloud(){
+  const s = PROF.activeWC;
+  const keys = await sList(`wc-words:${s.roomCode}:`);
+  const submissionRows = [];
+  const freq = {};
+  for(const k of keys){
+    const rec = await sGet(k);
+    if(!rec || !rec.words) continue;
+    submissionRows.push({ 'Student ID': rec.sid, Name: rec.name, Words: rec.words.join(', ') });
+    rec.words.forEach(w=>{
+      const norm = String(w).trim().toLowerCase();
+      if(!norm) return;
+      freq[norm] = (freq[norm]||0) + 1;
+    });
+  }
+  if(!submissionRows.length){ alert('No words submitted yet.'); return; }
+  const freqRows = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([word,count])=>({Word:word, Count:count}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(freqRows), 'Word frequency');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(submissionRows), 'Submissions');
+  XLSX.writeFile(wb, `wordcloud-${s.roomCode}.xlsx`);
+}
+const WC_PALETTE = ['#2F7D63','#B8894B','#3D6FA8','#A63D40','#6B4F9E','#1F3A34','#C2703D'];
+async function loadWordCloud(){
+  const s = PROF.activeWC;
+  const el = document.getElementById('wc-cloud-area');
+  const keys = await sList(`wc-words:${s.roomCode}:`);
+  const freq = {};
+  for(const k of keys){
+    const rec = await sGet(k);
+    if(!rec || !rec.words) continue;
+    rec.words.forEach(w=>{
+      const norm = String(w).trim().toLowerCase();
+      if(!norm) return;
+      freq[norm] = (freq[norm]||0) + 1;
+    });
+  }
+  const entries = Object.entries(freq);
+  if(!entries.length){ el.innerHTML = '<div class="empty">No words submitted yet.</div>'; return; }
+  shuffleArray(entries); // scatter order so the biggest words don't all cluster at the start
+  const maxCount = Math.max(...entries.map(e=>e[1]));
+  const minSize = 16, maxSize = 68;
+  el.innerHTML = entries.map(([word,count],i)=>{
+    const size = minSize + (maxSize-minSize) * (count/maxCount);
+    const color = WC_PALETTE[i % WC_PALETTE.length];
+    const rotate = [-8,-4,0,0,0,4,8][i % 7];
+    return `<span class="wc-word" style="font-size:${size.toFixed(0)}px;color:${color};transform:rotate(${rotate}deg);" title="${count}×">${esc(word)}</span>`;
+  }).join('');
+}
+
+/* ================= STOPWATCH (local only, no Firebase) ================= */
+let SW = { seconds:300, running:false, handle:null };
+function viewStopwatch(){
+  const mm = String(Math.floor(SW.seconds/60)).padStart(2,'0');
+  const ss = String(SW.seconds%60).padStart(2,'0');
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-home4">← Class Tools</button></p>
+  <h1 class="page-title">Stopwatch</h1>
+  <p class="page-desc">Instructor-screen only — for discussion time or presentation prep. Nothing here is shared with students.</p>
+  <div class="card" style="text-align:center;">
+    <div class="timer-display ${SW.seconds===0?'alert':''}" id="sw-display">${mm}:${ss}</div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="secondary small" data-preset="60">1 min</button>
+      <button class="secondary small" data-preset="180">3 min</button>
+      <button class="secondary small" data-preset="300">5 min</button>
+      <button class="secondary small" data-preset="600">10 min</button>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:14px;">
+      <input type="number" id="sw-set-min" min="0" max="180" placeholder="min" style="max-width:80px;text-align:center;">
+      <span>:</span>
+      <input type="number" id="sw-set-sec" min="0" max="59" placeholder="sec" style="max-width:80px;text-align:center;">
+      <button class="secondary small" id="sw-set-btn">Set</button>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button class="secondary" id="sw-minus">−1 min</button>
+      <button class="brass" id="sw-toggle">${SW.running?'Pause':'Start'}</button>
+      <button class="secondary" id="sw-plus">+1 min</button>
+      <button class="secondary" id="sw-reset">Reset</button>
+    </div>
+  </div>`;
+}
+function bindStopwatch(){
+  document.getElementById('back-home4').addEventListener('click', ()=>{ clearInterval(SW.handle); SW.running=false; PROF_VIEW='home'; render(); });
+  document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click', ()=>{
+    SW.seconds = +b.dataset.preset; SW.running=false; clearInterval(SW.handle); render();
+  }));
+  document.getElementById('sw-set-btn').addEventListener('click', ()=>{
+    const min = Math.max(0, parseInt(document.getElementById('sw-set-min').value,10) || 0);
+    const sec = Math.max(0, Math.min(59, parseInt(document.getElementById('sw-set-sec').value,10) || 0));
+    SW.seconds = min*60 + sec;
+    SW.running = false; clearInterval(SW.handle); render();
+  });
+  document.getElementById('sw-plus').addEventListener('click', ()=>{ SW.seconds+=60; updateSwDisplay(); });
+  document.getElementById('sw-minus').addEventListener('click', ()=>{ SW.seconds=Math.max(0,SW.seconds-60); updateSwDisplay(); });
+  document.getElementById('sw-reset').addEventListener('click', ()=>{ SW.seconds=300; SW.running=false; clearInterval(SW.handle); render(); });
+  document.getElementById('sw-toggle').addEventListener('click', ()=>{
+    SW.running = !SW.running;
+    if(SW.running){
+      SW.handle = setInterval(()=>{
+        if(SW.seconds>0){ SW.seconds--; updateSwDisplay(); }
+        else { clearInterval(SW.handle); SW.running=false; playBeep(); updateSwDisplay(); }
+      }, 1000);
+    } else clearInterval(SW.handle);
+    render();
+  });
+}
+function updateSwDisplay(){
+  const mm = String(Math.floor(SW.seconds/60)).padStart(2,'0');
+  const ss = String(SW.seconds%60).padStart(2,'0');
+  const disp = document.getElementById('sw-display');
+  if(disp){ disp.textContent = `${mm}:${ss}`; disp.classList.toggle('alert', SW.seconds===0); }
+  const toggleBtn = document.getElementById('sw-toggle');
+  if(toggleBtn) toggleBtn.textContent = SW.running?'Pause':'Start';
+}
+function playBeep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.6);
+  }catch(e){}
+}
+
+/* ================= STUDENT ================= */
+function viewStudent(){
+  if(STU.step==='code') return stCodeView();
+  if(STU.step==='id') return stIdView();
+  if(STU.step==='quiz-live') return stQuizLiveView();
+  if(STU.step==='quiz-selfpaced') return stQuizSelfpacedView();
+  if(STU.step==='quiz-done') return stQuizDoneView();
+  if(STU.step==='wc-submit') return stWCSubmitView();
+  return stCodeView();
+}
+function stCodeView(){
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">Student</p>
+    <h1 class="page-title">Enter the room code</h1>
+  </div>
+  <div style="max-width:280px;margin:0 auto;">
+    <input type="text" id="st-code" class="roomcode-input" maxlength="4" placeholder="0000">
+    <div style="height:12px;"></div>
+    <button class="brass" style="width:100%;" id="st-code-next">Next</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function stIdView(){
+  const label = STU.kind==='quiz' ? STU.session.title : STU.session.prompt;
+  return `
+  <div class="join-hero">
+    <p class="page-eyebrow">${esc(label)}</p>
+    <h1 class="page-title">Enter your name</h1>
+  </div>
+  <div style="max-width:320px;margin:0 auto;">
+    <div class="field"><label>Student ID</label><input type="text" id="st-sid" placeholder="20231234"></div>
+    <div class="field"><label>Name</label><input type="text" id="st-name" placeholder="Jane Kim"></div>
+    <button class="brass" style="width:100%;" id="st-id-next">Join</button>
+    <div class="error-text">${esc(STU.error)}</div>
+  </div>`;
+}
+function bindStudent(){
+  if(STU.step==='code'){
+    document.getElementById('st-code-next').addEventListener('click', async ()=>{
+      const code = document.getElementById('st-code').value.trim();
+      if(!code){ STU.error='Enter a room code.'; render(); return; }
+      let session = await sGet(`quiz-session:${code}`);
+      if(session){ STU.kind='quiz'; STU.session=session; STU.code=code; STU.error=''; STU.step='id'; render(); return; }
+      session = await sGet(`wc-session:${code}`);
+      if(session){ STU.kind='wc'; STU.session=session; STU.code=code; STU.error=''; STU.step='id'; render(); return; }
+      STU.error = 'No session found for that room code.'; render();
+    });
+    return;
+  }
+  if(STU.step==='id'){
+    document.getElementById('st-id-next').addEventListener('click', async ()=>{
+      const sid = document.getElementById('st-sid').value.trim();
+      const name = document.getElementById('st-name').value.trim();
+      if(!sid || !name){ STU.error='Please enter both your student ID and name.'; render(); return; }
+      STU.sid=sid; STU.name=name; STU.error='';
+      if(STU.kind==='quiz'){
+        if(STU.session.mode==='live'){ STU.step='quiz-live'; render(); startQuizLivePolling(); }
+        else{
+          let rec = await sGet(`quiz-answer:${STU.code}:${sid}`);
+          if(!rec){ rec = {sid, name, answers:{}, score:0, completed:false}; await sSet(`quiz-answer:${STU.code}:${sid}`, rec); }
+          STU.quizAnswers = rec.answers || {};
+          let idx = 0;
+          while(idx < STU.session.questions.length && STU.quizAnswers[idx]!==undefined) idx++;
+          STU.quizIdx = idx;
+          STU.quizSelected = null;
+          if(rec.completed){ STU.step='quiz-done'; STU.quizScore=rec.score; STU.quizAttempts=rec.attempts||1; } else { STU.step='quiz-selfpaced'; }
+          render();
+        }
+      } else {
+        STU.wcWords = [];
+        STU.step='wc-submit'; render();
+      }
+    });
+    return;
+  }
+  if(STU.step==='quiz-live') bindQuizLiveStudent();
+  if(STU.step==='quiz-selfpaced') bindQuizSelfpacedStudent();
+  if(STU.step==='quiz-done') bindQuizDone();
+  if(STU.step==='wc-submit') bindWCSubmit();
+}
+
+/* --- Student: Quiz Live --- */
+function answerInputHTML(q, currentAnswer, revealed, disabled){
+  if(q.type==='short'){
+    return `<div class="field"><input type="text" id="st-short-input" placeholder="Type your answer" value="${escAttr(currentAnswer||'')}" ${disabled?'disabled':''}></div>
+      <button class="brass small" id="st-short-submit" ${disabled?'disabled':''}>Submit</button>`;
+  }
+  if(q.type==='order'){
+    const built = currentAnswer || [];
+    return `
+      <div style="margin-bottom:12px;">${built.length? built.map((w,i)=>`<span class="order-slot">${i+1}. ${esc(w)}</span>`).join('') : '<span style="color:var(--charcoal-soft);font-size:14px;">Tap items below in the order you think is correct.</span>'}</div>
+      <div id="st-order-picks">${q.items.map(it=>`<button class="order-pick-btn ${built.includes(it)?'used':''}" data-pick="${escAttr(it)}" type="button" ${disabled?'disabled':''}>${esc(it)}</button>`).join('')}</div>
+      <div style="margin-top:10px;"><button class="secondary small" id="st-order-reset" type="button" ${disabled?'disabled':''}>Reset</button> <button class="brass small" id="st-order-submit" type="button" ${(built.length===q.items.length && !disabled)?'':'disabled'}>Submit order</button></div>`;
+  }
+  return `<div id="st-quiz-choices">${q.options.map((o,oi)=>`<div class="choice-btn ${currentAnswer===oi?'selected':''} ${revealed && oi===q.correct?'correct':''}" data-oi="${oi}">${String.fromCharCode(65+oi)}. ${esc(o)}</div>`).join('')}</div>`;
+}
+function stQuizLiveView(){
+  const q = STU.session.questions[STU.session.currentIndex];
+  const expired = STU.session.questionEndsAt && Date.now() > STU.session.questionEndsAt;
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)}</p>
+  <h1 class="page-title">${esc(STU.session.title)}</h1>
+  ${STU.session.timerSeconds>0 ? `<div id="st-quiz-timer" style="font-family:var(--serif);font-size:26px;color:var(--mint-deep);text-align:center;margin-bottom:12px;"></div>` : ''}
+  <div class="card">
+    <div class="meta" style="color:var(--charcoal-soft);font-size:13.5px;margin-bottom:8px;">Question ${STU.session.currentIndex+1} / ${STU.session.questions.length}</div>
+    <h3>${esc(q.text)}</h3>
+    ${answerInputHTML(q, STU.quizSelected, STU.session.revealed, expired)}
+    <div id="st-quiz-status" style="margin-top:10px;font-size:14px;color:var(--charcoal-soft);">${expired?"Time's up for this question.":''}</div>
+  </div>`;
+}
+let qzStuTimerHandle = null;
+function tickStuTimer(){
+  const el = document.getElementById('st-quiz-timer');
+  if(!el || !STU.session || !STU.session.questionEndsAt) return;
+  const left = Math.max(0, Math.ceil((STU.session.questionEndsAt-Date.now())/1000));
+  el.textContent = left>0 ? `⏱ ${left}s` : "⏱ Time's up";
+  if(left===0) clearInterval(qzStuTimerHandle);
+}
+function bindQuizLiveStudent(){
+  clearInterval(qzStuTimerHandle);
+  if(STU.session.timerSeconds>0){ tickStuTimer(); qzStuTimerHandle = setInterval(tickStuTimer, 1000); }
+  const q = STU.session.questions[STU.session.currentIndex];
+  document.querySelectorAll('#st-quiz-choices [data-oi]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(STU.session.questionEndsAt && Date.now() > STU.session.questionEndsAt) return;
+      const oi = +el.dataset.oi;
+      STU.quizSelected = oi;
+      await sSet(`quiz-vote:${STU.code}:${STU.session.currentIndex}:${STU.sid}`, oi);
+      document.querySelectorAll('#st-quiz-choices [data-oi]').forEach(b=>b.classList.remove('selected'));
+      el.classList.add('selected');
+      document.getElementById('st-quiz-status').textContent = 'Submitted. Wait for the next question.';
+    });
+  });
+  const shortSubmit = document.getElementById('st-short-submit');
+  if(shortSubmit) shortSubmit.addEventListener('click', async ()=>{
+    const val = document.getElementById('st-short-input').value.trim();
+    if(!val) return;
+    STU.quizSelected = val;
+    await sSet(`quiz-vote:${STU.code}:${STU.session.currentIndex}:${STU.sid}`, val);
+    document.getElementById('st-quiz-status').textContent = 'Submitted. Wait for the next question.';
+  });
+  document.querySelectorAll('#st-order-picks [data-pick]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const val = btn.dataset.pick;
+      const built = STU.quizSelected || [];
+      if(built.includes(val) || built.length>=q.items.length) return;
+      STU.quizSelected = [...built, val];
+      render();
+    });
+  });
+  const orderReset = document.getElementById('st-order-reset');
+  if(orderReset) orderReset.addEventListener('click', ()=>{ STU.quizSelected = []; render(); });
+  const orderSubmit = document.getElementById('st-order-submit');
+  if(orderSubmit) orderSubmit.addEventListener('click', async ()=>{
+    await sSet(`quiz-vote:${STU.code}:${STU.session.currentIndex}:${STU.sid}`, STU.quizSelected);
+    document.getElementById('st-quiz-status').textContent = 'Submitted. Wait for the next question.';
+  });
+}
+function startQuizLivePolling(){
+  clearInterval(STU.quizPollHandle);
+  STU.quizPollHandle = setInterval(async ()=>{
+    if(STU.step!=='quiz-live') return;
+    if(STU.isPreview) return; // preview is a local snapshot only — never overwritten by the real session
+    const fresh = await sGet(`quiz-session:${STU.code}`);
+    if(fresh){
+      const changed = fresh.currentIndex !== STU.session.currentIndex || fresh.revealed !== STU.session.revealed;
+      STU.session = fresh;
+      if(changed){ STU.quizSelected = null; clearInterval(qzStuTimerHandle); render(); }
+    }
+  }, 3000);
+}
+
+/* --- Student: Quiz Self-paced --- */
+function stQuizSelfpacedView(){
+  const total = STU.session.questions.length;
+  if(STU.quizIdx >= total) return stQuizSelfpacedSubmitPrompt();
+  const q = STU.session.questions[STU.quizIdx];
+  const current = STU.quizAnswers[STU.quizIdx];
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)}</p>
+  <h1 class="page-title">${esc(STU.session.title)}</h1>
+  <div class="card">
+    <div class="meta" style="color:var(--charcoal-soft);font-size:13.5px;margin-bottom:8px;">Question ${STU.quizIdx+1} / ${total}</div>
+    <h3>${esc(q.text)}</h3>
+    ${answerInputHTML(q, current!=null?current:(q.type==='order'?[]:null), false, false)}
+  </div>`;
+}
+function stQuizSelfpacedSubmitPrompt(){
+  const answeredCount = Object.keys(STU.quizAnswers||{}).length;
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)}</p>
+  <h1 class="page-title">${esc(STU.session.title)}</h1>
+  <div class="card" style="text-align:center;">
+    <p style="font-size:16px;">You've answered ${answeredCount} / ${STU.session.questions.length} questions.</p>
+    <button class="brass" id="st-quiz-submit">Submit quiz</button>
+  </div>`;
+}
+async function saveSelfpacedAnswer(value){
+  STU.quizAnswers[STU.quizIdx] = value;
+  let rec = await sGet(`quiz-answer:${STU.code}:${STU.sid}`);
+  rec.answers = STU.quizAnswers;
+  await sSet(`quiz-answer:${STU.code}:${STU.sid}`, rec);
+  STU.quizIdx++;
+  render();
+}
+function bindQuizSelfpacedStudent(){
+  const total = STU.session.questions.length;
+  if(STU.quizIdx >= total){
+    const submitBtn = document.getElementById('st-quiz-submit');
+    if(submitBtn) submitBtn.addEventListener('click', async ()=>{
+      let rec = await sGet(`quiz-answer:${STU.code}:${STU.sid}`);
+      let score = 0;
+      STU.session.questions.forEach((q,i)=>{ if(isCorrectAnswer(q, rec.answers[i])) score++; });
+      rec.score = score; rec.completed = true;
+      rec.attempts = rec.attempts || 1;
+      rec.history = rec.history || [];
+      rec.history.push({attempt: rec.attempts, score, completedAt: Date.now()});
+      await sSet(`quiz-answer:${STU.code}:${STU.sid}`, rec);
+      STU.quizScore = score;
+      STU.quizAttempts = rec.attempts;
+      STU.step='quiz-done'; render();
+    });
+    return;
+  }
+  const q = STU.session.questions[STU.quizIdx];
+  document.querySelectorAll('#st-quiz-choices [data-oi]').forEach(el=>{
+    el.addEventListener('click', ()=>{ saveSelfpacedAnswer(+el.dataset.oi); });
+  });
+  const shortSubmit = document.getElementById('st-short-submit');
+  if(shortSubmit) shortSubmit.addEventListener('click', ()=>{
+    const val = document.getElementById('st-short-input').value.trim();
+    if(!val) return;
+    saveSelfpacedAnswer(val);
+  });
+  document.querySelectorAll('#st-order-picks [data-pick]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const val = btn.dataset.pick;
+      const built = STU.quizAnswers[STU.quizIdx] || [];
+      if(built.includes(val) || built.length>=q.items.length) return;
+      STU.quizAnswers[STU.quizIdx] = [...built, val];
+      render();
+    });
+  });
+  const orderReset = document.getElementById('st-order-reset');
+  if(orderReset) orderReset.addEventListener('click', ()=>{ STU.quizAnswers[STU.quizIdx] = []; render(); });
+  const orderSubmit = document.getElementById('st-order-submit');
+  if(orderSubmit) orderSubmit.addEventListener('click', ()=>{ saveSelfpacedAnswer(STU.quizAnswers[STU.quizIdx]); });
+}
+function stQuizDoneView(){
+  return `
+  <p class="page-eyebrow">${esc(STU.name)} · ${esc(STU.sid)}</p>
+  <h1 class="page-title">${esc(STU.session.title)} — Done</h1>
+  <div class="card" style="text-align:center;">
+    <p style="font-family:var(--serif);font-size:32px;color:var(--mint-deep);">${STU.quizScore} / ${STU.session.questions.length}</p>
+    <p style="color:var(--charcoal-soft);">Attempt ${STU.quizAttempts||1}. Thanks for completing the quiz.</p>
+    <button class="secondary" id="st-quiz-retry">🔄 Try again</button>
+  </div>`;
+}
+function bindQuizDone(){
+  const retryBtn = document.getElementById('st-quiz-retry');
+  if(retryBtn) retryBtn.addEventListener('click', async ()=>{
+    let rec = await sGet(`quiz-answer:${STU.code}:${STU.sid}`);
+    rec.attempts = (rec.attempts || 1) + 1;
+    rec.answers = {};
+    rec.completed = false;
+    rec.score = 0;
+    await sSet(`quiz-answer:${STU.code}:${STU.sid}`, rec);
+    STU.quizAnswers = {};
+    STU.quizIdx = 0;
+    STU.step = 'quiz-selfpaced';
+    render();
+  });
+}
+
+/* --- Student: Word Cloud --- */
+function stWCSubmitView(){
+  const maxWords = STU.session.maxWords || 1;
+  const remaining = maxWords - STU.wcWords.length;
+  return `
+  <p class="page-eyebrow">${esc(STU.name)}</p>
+  <h1 class="question-block">${esc(STU.session.prompt)}</h1>
+  <div class="card">
+    <div id="wc-chips">${STU.wcWords.map((w,i)=>`<span class="word-chip">${esc(w)}<button data-remove-word="${i}">✕</button></span>`).join('')}</div>
+    <div class="field" style="margin-top:10px;">
+      <label>${remaining>0 ? `Add a word (${remaining} left)` : 'Limit reached'}</label>
+      <div class="row">
+        <input type="text" id="wc-word-input" ${remaining<=0?'disabled':''} placeholder="Type a word and press Add">
+        <button class="secondary" id="wc-add-word" style="flex:0 0 auto;" ${remaining<=0?'disabled':''} type="button">Add</button>
+      </div>
+    </div>
+    <button class="brass" id="wc-submit-btn" style="margin-top:10px;" ${STU.wcWords.length===0?'disabled':''} type="button">Submit</button>
+    <div id="wc-submit-status" style="margin-top:10px;font-size:14px;color:var(--mint-deep);"></div>
+  </div>`;
+}
+function bindWCSubmit(){
+  const maxWords = STU.session.maxWords || 1;
+  const addBtn = document.getElementById('wc-add-word');
+  const input = document.getElementById('wc-word-input');
+  function addWord(){
+    const val = input.value.trim();
+    if(!val) return;
+    if(STU.wcWords.length >= maxWords) return;
+    STU.wcWords.push(val);
+    input.value = '';
+    render();
+  }
+  if(addBtn) addBtn.addEventListener('click', addWord);
+  if(input) input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addWord(); } });
+  document.querySelectorAll('[data-remove-word]').forEach(b=>b.addEventListener('click', ()=>{
+    STU.wcWords.splice(+b.dataset.removeWord, 1); render();
+  }));
+  const submitBtn = document.getElementById('wc-submit-btn');
+  if(submitBtn) submitBtn.addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('wc-submit-status');
+    statusEl.textContent = 'Submitting…';
+    try{
+      const ok = await sSet(`wc-words:${STU.code}:${STU.sid}`, {sid:STU.sid, name:STU.name, words:STU.wcWords});
+      if(!ok){ statusEl.innerHTML = '<span style="color:var(--brick);">Save failed — please try again.</span>'; return; }
+      const verify = await sGet(`wc-words:${STU.code}:${STU.sid}`);
+      if(!verify || !verify.words || verify.words.length!==STU.wcWords.length){
+        statusEl.innerHTML = '<span style="color:var(--brick);">Save may not have completed — please try again.</span>';
+        return;
+      }
+      statusEl.textContent = 'Submitted — thank you!';
+      submitBtn.disabled = true;
+    }catch(err){
+      console.error('Word cloud submit failed', err);
+      statusEl.innerHTML = `<span style="color:var(--brick);">Error: ${esc(err && err.message ? err.message : String(err))}</span>`;
+    }
+  });
+}
+
+/* ---------- init ---------- */
+render();
+</script>
+</body>
+</html>
