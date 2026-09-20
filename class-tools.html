@@ -263,7 +263,7 @@ const PROF_PASSCODE = '5305';
 let profAuthenticated = false;
 let profAuthError = '';
 let PROF_VIEW = 'home';
-let PROF = { quizIndex:[], activeQuiz:null, activeQuizSession:null, editingQuizId:null, editingQuizData:null, viewingQuizSubject:null, quizWeekOpen:new Set(), quizPrefill:null, wcIndex:[], activeWC:null, builder:null };
+let PROF = { quizIndex:[], activeQuiz:null, activeQuizSession:null, editingQuizId:null, editingQuizData:null, viewingQuizSubject:null, quizWeekOpen:new Set(), quizPrefill:null, quizSessionLog:[], viewingQuizHistoryId:null, wcIndex:[], activeWC:null, builder:null };
 let STU = { step:'code', code:null, sid:null, name:null, error:'', session:null, kind:null,
             quizAnswers:{}, quizIdx:0, quizSelected:null, quizPollHandle:null,
             wcWords:[] };
@@ -277,6 +277,7 @@ function render(){
     if(PROF_VIEW==='home') inner = viewProfHome();
     else if(PROF_VIEW==='quiz-home') inner = viewQuizHome();
     else if(PROF_VIEW==='quiz-course') inner = viewQuizCourse();
+    else if(PROF_VIEW==='quiz-history') inner = viewQuizHistory();
     else if(PROF_VIEW==='quiz-create') inner = viewQuizCreate();
     else if(PROF_VIEW==='quiz-run-live') inner = viewQuizRunLive();
     else if(PROF_VIEW==='quiz-run-selfpaced') inner = viewQuizRunSelfpaced();
@@ -288,6 +289,7 @@ function render(){
     if(PROF_VIEW==='home') bindProfHome();
     else if(PROF_VIEW==='quiz-home') bindQuizHome();
     else if(PROF_VIEW==='quiz-course') bindQuizCourse();
+    else if(PROF_VIEW==='quiz-history') bindQuizHistory();
     else if(PROF_VIEW==='quiz-create') bindQuizCreate();
     else if(PROF_VIEW==='quiz-run-live') bindQuizRunLive();
     else if(PROF_VIEW==='quiz-run-selfpaced') bindQuizRunSelfpaced();
@@ -369,7 +371,7 @@ function viewProfHome(){
 function bindProfHome(){
   document.querySelectorAll('[data-tool]').forEach(el=>el.addEventListener('click', async ()=>{
     const tool = el.dataset.tool;
-    if(tool==='quiz'){ PROF.quizIndex = await sGet('quiz-set-index', false) || []; PROF_VIEW='quiz-home'; }
+    if(tool==='quiz'){ PROF.quizIndex = await sGet('quiz-set-index', false) || []; PROF.quizSessionLog = await sGet('quiz-session-log', false) || []; PROF_VIEW='quiz-home'; }
     else if(tool==='wc'){ PROF.wcIndex = await sGet('wc-index', false) || []; PROF_VIEW='wc-list'; }
     else if(tool==='stopwatch'){ PROF_VIEW='stopwatch'; }
     render();
@@ -458,6 +460,7 @@ function viewQuizCourse(){
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="brass small" data-start-live="${q.id}">Start Live</button>
               <button class="secondary small" data-start-self="${q.id}">Start Self-paced</button>
+              <button class="secondary small" data-quiz-history="${q.id}">📜 History</button>
               <button class="secondary small" data-edit-quiz="${q.id}">Edit</button>
               <button class="danger small" data-del-quiz="${q.id}">Delete</button>
             </div>
@@ -479,6 +482,10 @@ function bindQuizCourse(){
     render();
   }));
   document.querySelectorAll('[data-start-live]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startLive, 'live')));
+  document.querySelectorAll('[data-quiz-history]').forEach(b=>b.addEventListener('click', ()=>{
+    PROF.viewingQuizHistoryId = b.dataset.quizHistory;
+    PROF_VIEW='quiz-history'; render();
+  }));
   document.querySelectorAll('[data-start-self]').forEach(b=>b.addEventListener('click', ()=>startQuizSession(b.dataset.startSelf, 'selfpaced')));
   document.querySelectorAll('[data-edit-quiz]').forEach(b=>b.addEventListener('click', async ()=>{
     const qid = b.dataset.editQuiz;
@@ -500,6 +507,8 @@ function bindQuizCourse(){
 async function startQuizSession(qid, mode){
   const qset = await sGet(`quiz-set:${qid}`, false);
   if(!qset) return;
+  const className = prompt('Class section name — lets you run the same quiz separately for different classes (e.g., "Section 1", "Tuesday class"):', '');
+  if(className===null) return; // cancelled
   let timerSeconds = 0;
   if(mode==='live'){
     const input = prompt("Seconds per question — everyone answers within this time before you move on.\nEnter 0 for no timer (advance manually whenever you like).", "20");
@@ -507,12 +516,62 @@ async function startQuizSession(qid, mode){
     timerSeconds = Math.max(0, parseInt(input,10) || 0);
   }
   const code = roomCode();
-  const session = { roomCode:code, mode, title:qset.title, questions:qset.questions, currentIndex:0, revealed:false,
+  const session = { roomCode:code, mode, title:qset.title, className: className.trim() || null, questions:qset.questions, currentIndex:0, revealed:false,
     timerSeconds, questionEndsAt: timerSeconds>0 ? Date.now()+timerSeconds*1000 : null, createdAt:Date.now() };
   await sSet(`quiz-session:${code}`, session);
+  // Record that this session was run, so results can be found again later even after
+  // leaving this screen — the room code itself was never saved anywhere before this.
+  PROF.quizSessionLog = PROF.quizSessionLog || [];
+  PROF.quizSessionLog.push({ code, quizId:qid, quizTitle:qset.title, className: session.className, mode, startedAt: session.createdAt });
+  await sSet('quiz-session-log', PROF.quizSessionLog, false);
   PROF.activeQuizSession = session;
   PROF_VIEW = (mode==='live') ? 'quiz-run-live' : 'quiz-run-selfpaced';
   render();
+}
+
+/* ================= QUIZ: HISTORY (past sessions for a quiz) ================= */
+function viewQuizHistory(){
+  const qid = PROF.viewingQuizHistoryId;
+  const entries = (PROF.quizSessionLog||[]).filter(e=>e.quizId===qid).sort((a,b)=>b.startedAt-a.startedAt);
+  const title = entries.length ? entries[0].quizTitle : (PROF.quizIndex.find(q=>q.id===qid)||{}).title;
+  return `
+  <p class="page-eyebrow"><button class="link-btn" id="back-quizcourse-h">← ${esc(PROF.viewingQuizSubject)}</button></p>
+  <h1 class="page-title">${esc(title||'Quiz')} — Past sessions</h1>
+  <div class="card">
+    ${entries.length ? entries.map(e=>`
+      <div class="list-row">
+        <div><div class="title">${e.className ? esc(e.className) : 'Room '+e.code} <span class="tag">${e.mode==='live'?'Live':'Self-paced'}</span></div><div class="meta">${e.className?`Room ${e.code} · `:''}${new Date(e.startedAt).toLocaleString()}</div></div>
+        <div style="display:flex;gap:6px;">
+          <button class="brass small" data-open-session="${e.code}" data-mode="${e.mode}">Open results</button>
+          <button class="danger small" data-del-session="${e.code}">Delete</button>
+        </div>
+      </div>`).join('') : '<div class="empty">No sessions run yet for this quiz.</div>'}
+  </div>`;
+}
+function bindQuizHistory(){
+  document.getElementById('back-quizcourse-h').addEventListener('click', ()=>{ PROF_VIEW='quiz-course'; render(); });
+  document.querySelectorAll('[data-open-session]').forEach(b=>b.addEventListener('click', async ()=>{
+    const code = b.dataset.openSession;
+    const session = await sGet(`quiz-session:${code}`);
+    if(!session){ alert('This session\'s data could not be found — it may have been cleared from the database.'); return; }
+    PROF.activeQuizSession = session;
+    PROF_VIEW = (b.dataset.mode==='live') ? 'quiz-run-live' : 'quiz-run-selfpaced';
+    render();
+  }));
+  document.querySelectorAll('[data-del-session]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('Delete this session and all its results? This cannot be undone.')) return;
+    const code = b.dataset.delSession;
+    const voteKeys = await sList(`quiz-vote:${code}:`);
+    for(const k of voteKeys) await sDel(k);
+    const answerKeys = await sList(`quiz-answer:${code}:`);
+    for(const k of answerKeys) await sDel(k);
+    const rosterKeys = await sList(`quiz-live-roster:${code}:`);
+    for(const k of rosterKeys) await sDel(k);
+    await sDel(`quiz-session:${code}`);
+    PROF.quizSessionLog = (PROF.quizSessionLog||[]).filter(e=>e.code!==code);
+    await sSet('quiz-session-log', PROF.quizSessionLog, false);
+    render();
+  }));
 }
 
 /* ================= QUIZ: CREATE ================= */
@@ -732,7 +791,7 @@ function viewQuizRunLive(){
   const q = s.questions[s.currentIndex];
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-quizlist2">← Quiz</button></p>
-  <h1 class="page-title">${esc(s.title)} <span class="tag">Live</span></h1>
+  <h1 class="page-title">${esc(s.title)}${s.className?` — ${esc(s.className)}`:''} <span class="tag">Live</span></h1>
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
@@ -749,9 +808,12 @@ function viewQuizRunLive(){
     <button class="secondary" id="qz-reveal">${s.revealed?'Hide answer':'Reveal answer'}</button>
     <button class="secondary" id="qz-refresh">Refresh responses</button>
     <button class="brass" id="qz-next" ${s.currentIndex===s.questions.length-1?'disabled':''}>Next</button>
+    <button class="secondary" id="qz-scoreboard">🏆 Scoreboard</button>
+    <button class="secondary" id="qz-export-live">⬇ Export scores (Excel)</button>
     <button class="secondary" id="qz-preview">👀 Preview as student</button>
     <button class="danger" id="qz-end">End session</button>
-  </div>`;
+  </div>
+  <div id="qz-scoreboard-area" style="margin-top:16px;"></div>`;
 }
 let qzProfTimerHandle = null;
 function tickProfTimer(){
@@ -796,6 +858,51 @@ function bindQuizRunLive(){
   document.getElementById('qz-preview').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); previewAsStudent('quiz', PROF.activeQuizSession); });
   document.getElementById('qz-end').addEventListener('click', ()=>{ clearInterval(qzProfTimerHandle); PROF_VIEW='quiz-course'; render(); });
   document.getElementById('qz-refresh').addEventListener('click', loadQuizLiveResults);
+  document.getElementById('qz-scoreboard').addEventListener('click', showLiveScoreboard);
+  document.getElementById('qz-export-live').addEventListener('click', exportLiveScores);
+}
+// Live votes are stored per question, per student — a student's total score isn't kept
+// anywhere on its own, so it's computed on demand by checking every question's votes
+// against that question's correct answer.
+async function computeLiveScores(s){
+  const scores = {}; // sid -> { name, score }
+  const rosterKeys = await sList(`quiz-live-roster:${s.roomCode}:`);
+  for(const k of rosterKeys){
+    const r = await sGet(k);
+    if(r) scores[r.sid] = { name: r.name, score: 0 };
+  }
+  for(let qi=0; qi<s.questions.length; qi++){
+    const q = s.questions[qi];
+    const voteKeys = await sList(`quiz-vote:${s.roomCode}:${qi}:`);
+    for(const k of voteKeys){
+      const sid = k.split(':').pop();
+      const v = await sGet(k);
+      if(!scores[sid]) scores[sid] = { name: sid, score: 0 };
+      if(isCorrectAnswer(q, v)) scores[sid].score++;
+    }
+  }
+  return Object.entries(scores).map(([sid, v])=>({ sid, name:v.name, score:v.score }));
+}
+async function showLiveScoreboard(){
+  const s = PROF.activeQuizSession;
+  const el = document.getElementById('qz-scoreboard-area');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const rows = await computeLiveScores(s);
+  if(!rows.length){ el.innerHTML = '<div class="empty">No responses yet.</div>'; return; }
+  rows.sort((a,b)=>b.score-a.score);
+  el.innerHTML = `<div class="card"><h3>🏆 Scoreboard</h3>` + rows.map((r,i)=>`
+    <div class="list-row"><div><div class="title" style="font-size:15px;">${i+1}. ${esc(r.name)} <span style="font-size:12.5px;color:var(--charcoal-soft);font-family:var(--sans);">· ${esc(r.sid)}</span></div></div><div class="meta">${r.score} / ${s.questions.length}</div></div>`).join('') + `</div>`;
+}
+async function exportLiveScores(){
+  const s = PROF.activeQuizSession;
+  const rows = await computeLiveScores(s);
+  if(!rows.length){ alert('No student data to export yet.'); return; }
+  rows.sort((a,b)=>b.score-a.score);
+  const sheetRows = rows.map(r=>({ 'Student ID': r.sid, Name: r.name, Score: `${r.score} / ${s.questions.length}` }));
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Scores');
+  XLSX.writeFile(wb, `quiz-live-scores-${s.roomCode}.xlsx`);
 }
 async function loadQuizLiveResults(){
   const s = PROF.activeQuizSession;
@@ -834,7 +941,7 @@ function viewQuizRunSelfpaced(){
   const s = PROF.activeQuizSession;
   return `
   <p class="page-eyebrow"><button class="link-btn" id="back-quizlist3">← Quiz</button></p>
-  <h1 class="page-title">${esc(s.title)} <span class="tag">Self-paced</span></h1>
+  <h1 class="page-title">${esc(s.title)}${s.className?` — ${esc(s.className)}`:''} <span class="tag">Self-paced</span></h1>
   <div class="card" style="text-align:center;">
     <div class="tag">Room code</div>
     <div class="roomcode">${s.roomCode}</div>
@@ -1179,7 +1286,10 @@ function bindStudent(){
       if(!sid || !name){ STU.error='Please enter both your student ID and name.'; render(); return; }
       STU.sid=sid; STU.name=name; STU.error='';
       if(STU.kind==='quiz'){
-        if(STU.session.mode==='live'){ STU.step='quiz-live'; render(); startQuizLivePolling(); }
+        if(STU.session.mode==='live'){
+          await sSet(`quiz-live-roster:${STU.code}:${sid}`, {sid, name});
+          STU.step='quiz-live'; render(); startQuizLivePolling();
+        }
         else{
           let rec = await sGet(`quiz-answer:${STU.code}:${sid}`);
           if(!rec){ rec = {sid, name, answers:{}, score:0, completed:false}; await sSet(`quiz-answer:${STU.code}:${sid}`, rec); }
